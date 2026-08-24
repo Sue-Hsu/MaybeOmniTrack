@@ -2763,7 +2763,20 @@ ${promptRules}
             { year: '2024H2', cash_dividend: 1.35, stock_dividend: 0, total_dividend: 1.35, ex_dividend_date: '2024-11-18', payment_date: '2024-12-12', announcement_date: '2024-11-01' },
             { year: '2024H1', cash_dividend: 1.06, stock_dividend: 0, total_dividend: 1.06, ex_dividend_date: '2024-07-16', payment_date: '2024-08-11', announcement_date: '2024-07-01' },
             { year: '2023H2', cash_dividend: 0.86, stock_dividend: 0, total_dividend: 0.86, ex_dividend_date: '2023-11-21', payment_date: '2023-12-15', announcement_date: '2023-11-01' },
-            { year: '2023H1', cash_dividend: 1.35, stock_dividend: 0, total_dividend: 1.35, ex_dividend_date: '2023-07-18', payment_date: '2023-08-11', announcement_date: '2023-07-03' }
+            { year: '2023H1', cash_dividend: 1.35, stock_dividend: 0, total_dividend: 1.35, ex_dividend_date: '2023-07-18', payment_date: '2023-08-11', announcement_date: '2023-07-03' },
+            { year: '2022H2', cash_dividend: 1.03, stock_dividend: 0, total_dividend: 1.03, ex_dividend_date: '2022-11-16', payment_date: '2022-12-19', announcement_date: '2022-11-01' },
+            { year: '2022H1', cash_dividend: 1.24, stock_dividend: 0, total_dividend: 1.24, ex_dividend_date: '2022-07-18', payment_date: '2022-08-19', announcement_date: '2022-07-01' },
+            { year: '2021H2', cash_dividend: 1.15, stock_dividend: 0, total_dividend: 1.15, ex_dividend_date: '2021-11-16', payment_date: '2021-12-17', announcement_date: '2021-11-01' },
+            { year: '2021H1', cash_dividend: 0.39, stock_dividend: 0, total_dividend: 0.39, ex_dividend_date: '2021-07-21', payment_date: '2021-08-24', announcement_date: '2021-07-01' },
+            { year: '2020', cash_dividend: 2.30, stock_dividend: 0, total_dividend: 2.30, ex_dividend_date: '2020-11-17', payment_date: '2020-12-18', announcement_date: '2020-11-02' },
+            { year: '2019', cash_dividend: 2.05, stock_dividend: 0, total_dividend: 2.05, ex_dividend_date: '2019-11-19', payment_date: '2019-12-20', announcement_date: '2019-11-01' },
+            { year: '2018', cash_dividend: 1.48, stock_dividend: 0, total_dividend: 1.48, ex_dividend_date: '2018-11-19', payment_date: '2018-12-21', announcement_date: '2018-11-01' },
+            { year: '2017', cash_dividend: 1.10, stock_dividend: 0, total_dividend: 1.10, ex_dividend_date: '2017-11-20', payment_date: '2017-12-22', announcement_date: '2017-11-01' },
+            { year: '2016', cash_dividend: 0.83, stock_dividend: 0, total_dividend: 0.83, ex_dividend_date: '2016-11-21', payment_date: '2016-12-23', announcement_date: '2016-11-01' },
+            { year: '2015', cash_dividend: 0.80, stock_dividend: 0, total_dividend: 0.80, ex_dividend_date: '2015-11-23', payment_date: '2015-12-24', announcement_date: '2015-11-02' },
+            { year: '2014', cash_dividend: 0.70, stock_dividend: 0, total_dividend: 0.70, ex_dividend_date: '2014-11-24', payment_date: '2014-12-26', announcement_date: '2014-11-03' },
+            { year: '2013', cash_dividend: 0.60, stock_dividend: 0, total_dividend: 0.60, ex_dividend_date: '2013-11-25', payment_date: '2013-12-27', announcement_date: '2013-11-01' },
+            { year: '2012', cash_dividend: 0.50, stock_dividend: 0, total_dividend: 0.50, ex_dividend_date: '2012-11-26', payment_date: '2012-12-28', announcement_date: '2012-11-01' }
         ],
         '00919': [
             { year: '2026Q2', cash_dividend: 0.72, stock_dividend: 0, total_dividend: 0.72, ex_dividend_date: '2026-06-18', payment_date: '2026-07-15', announcement_date: '2026-06-02' },
