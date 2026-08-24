@@ -427,6 +427,20 @@
                     </div>
                 </div>
 
+                <!-- AI 健檢即時運算狀態指示卡 (運算中顯示) -->
+                <div id="ai-diagnose-progress-box" class="ai-progress-card" style="display: none;">
+                    <div class="ai-progress-glow-ring">
+                        <i class="fa-solid fa-brain fa-beat"></i>
+                    </div>
+                    <div class="ai-progress-content">
+                        <div class="ai-progress-title">
+                            <span>Google Gemini AI 存股健檢進行中</span>
+                            <span class="ai-live-dots"><span>.</span><span>.</span><span>.</span></span>
+                        </div>
+                        <div class="ai-progress-step" id="ai-progress-step-text">正在連線 FinMind 抓取股價與財務數據...</div>
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
                         <label for="add-stock-diagnosis" style="margin-bottom: 0;">AI 存股診斷評語 (依 5 大維度法則分析)</label>

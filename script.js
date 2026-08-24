@@ -126,6 +126,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const addStockKeywordInput = document.getElementById('add-stock-keyword');
     const btnSearchFinMindStock = document.getElementById('btn-search-finmind-stock');
     const stockSearchMatchesEl = document.getElementById('stock-search-matches');
+    const aiDiagnoseProgressBox = document.getElementById('ai-diagnose-progress-box');
+    const aiProgressStepText = document.getElementById('ai-progress-step-text');
     const addStockCodeInput = document.getElementById('add-stock-code');
     const addStockNameInput = document.getElementById('add-stock-name');
     const addStockCategoryInput = document.getElementById('add-stock-category');
@@ -920,7 +922,19 @@ ${promptRules}
         async function selectAndDiagnoseStock(code, name) {
             addStockCodeInput.value = code;
             addStockNameInput.value = name;
-            addStockDiagnosisInput.value = '正在連線 FinMind 抓取最新股價與 Gemini AI 深度健檢中...';
+            
+            // 1. 啟動 AI 健檢動態進度條與按鈕鎖定
+            if (aiDiagnoseProgressBox) {
+                aiDiagnoseProgressBox.style.display = 'flex';
+                if (aiProgressStepText) {
+                    aiProgressStepText.textContent = 'Step 1/3: 正在連線 FinMind 抓取最新股價與歷史行情...';
+                }
+            }
+            btnAiDiagnoseStock.disabled = true;
+            btnAiDiagnoseStock.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles fa-spin"></i> Gemini AI 深度運算中...';
+            btnSubmitAddStock.disabled = true;
+            btnSubmitAddStock.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> AI 健檢進行中，請稍候...';
+            addStockDiagnosisInput.value = '正在連線 FinMind 抓取數據並由 Google Gemini AI 進行存股法則深度健檢...';
 
             let price = 0;
             try {
@@ -940,12 +954,36 @@ ${promptRules}
             if (price === 0) price = 35.0;
             addStockPriceInput.value = price.toFixed(2);
 
+            // 2. 切換步驟至 Gemini AI 分析
+            if (aiProgressStepText) {
+                const currentModel = state.config.geminiModel || 'gemini-3.6-flash';
+                aiProgressStepText.textContent = `Step 2/3: 正在由 Google Gemini AI (${currentModel}) 進行 5 大維度存股評估...`;
+            }
+
             // 觸發 Gemini AI 存股健檢
             const aiResult = await generateAiStockDiagnosis(code, name, price);
             tempCalculatedMetrics = aiResult;
 
+            if (aiProgressStepText) {
+                aiProgressStepText.textContent = 'Step 3/3: 正在提煉大白話存股評語與指標評分...';
+            }
+
+            // 3. 填入分析結果
             addStockCategoryInput.value = aiResult.category;
             addStockDiagnosisInput.value = aiResult.diagnosis;
+
+            // 4. 顯示完成動畫並恢復按鈕
+            if (aiProgressStepText) {
+                aiProgressStepText.innerHTML = '<span style="color: #16a34a; font-weight: 700;">✨ AI 存股健檢分析完成！已自動產出 5 大維度診斷</span>';
+            }
+            setTimeout(() => {
+                if (aiDiagnoseProgressBox) aiDiagnoseProgressBox.style.display = 'none';
+            }, 1800);
+
+            btnAiDiagnoseStock.disabled = false;
+            btnAiDiagnoseStock.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> 觸發 Gemini AI 重新分析';
+            btnSubmitAddStock.disabled = false;
+            btnSubmitAddStock.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> 儲存並加入 Supabase 資料庫';
         }
 
         // 手動點選「觸發 Gemini AI 重新分析」按鈕
@@ -958,9 +996,19 @@ ${promptRules}
                 return;
             }
 
+            if (aiDiagnoseProgressBox) {
+                aiDiagnoseProgressBox.style.display = 'flex';
+                if (aiProgressStepText) {
+                    const currentModel = state.config.geminiModel || 'gemini-3.6-flash';
+                    aiProgressStepText.textContent = `正在由 Google Gemini AI (${currentModel}) 重新依 5 大維度法則運算中...`;
+                }
+            }
+
             btnAiDiagnoseStock.disabled = true;
-            btnAiDiagnoseStock.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> AI 分析中...';
-            addStockDiagnosisInput.value = 'Google Studio AI (Gemini) 正在根據 4 本存股經典進行運算...';
+            btnAiDiagnoseStock.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles fa-spin"></i> AI 分析中...';
+            btnSubmitAddStock.disabled = true;
+            btnSubmitAddStock.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> AI 健檢進行中，請稍候...';
+            addStockDiagnosisInput.value = 'Google Studio AI (Gemini) 正在根據存股法則進行運算分析...';
 
             const aiResult = await generateAiStockDiagnosis(code, name, price);
             tempCalculatedMetrics = aiResult;
@@ -968,8 +1016,17 @@ ${promptRules}
             addStockCategoryInput.value = aiResult.category;
             addStockDiagnosisInput.value = aiResult.diagnosis;
 
+            if (aiProgressStepText) {
+                aiProgressStepText.innerHTML = '<span style="color: #16a34a; font-weight: 700;">✨ AI 存股健檢重新分析完成！</span>';
+            }
+            setTimeout(() => {
+                if (aiDiagnoseProgressBox) aiDiagnoseProgressBox.style.display = 'none';
+            }, 1800);
+
             btnAiDiagnoseStock.disabled = false;
             btnAiDiagnoseStock.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> 觸發 Gemini AI 重新分析';
+            btnSubmitAddStock.disabled = false;
+            btnSubmitAddStock.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> 儲存並加入 Supabase 資料庫';
         });
 
         // 提交儲存至 Supabase

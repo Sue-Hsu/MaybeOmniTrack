@@ -1042,6 +1042,81 @@ input:focus, select:focus {
     color: var(--accent-blue);
 }
 
+/* AI 健檢即時運算動態狀態卡片 */
+.ai-progress-card {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.75rem;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(239, 246, 255, 0.95), rgba(245, 243, 255, 0.95));
+    border: 1.5px solid #818cf8;
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.15), inset 0 0 10px rgba(129, 140, 248, 0.1);
+    animation: aiCardGlow 2s infinite alternate ease-in-out;
+}
+
+@keyframes aiCardGlow {
+    0% { border-color: #818cf8; box-shadow: 0 4px 14px rgba(99, 102, 241, 0.15); }
+    100% { border-color: #38bdf8; box-shadow: 0 4px 20px rgba(56, 189, 248, 0.3); }
+}
+
+.ai-progress-glow-ring {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #4f46e5, #06b6d4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    font-size: 1.1rem;
+    box-shadow: 0 0 12px rgba(79, 70, 229, 0.4);
+    flex-shrink: 0;
+    animation: aiRingPulse 1.5s infinite ease-in-out;
+}
+
+@keyframes aiRingPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); box-shadow: 0 0 18px rgba(6, 182, 212, 0.6); }
+}
+
+.ai-progress-content {
+    flex: 1;
+}
+
+.ai-progress-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #312e81;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.ai-progress-step {
+    font-size: 0.76rem;
+    color: #4f46e5;
+    margin-top: 0.15rem;
+    font-weight: 500;
+}
+
+.ai-live-dots span {
+    animation: liveDots 1.4s infinite;
+    opacity: 0;
+    font-weight: 900;
+    color: #4f46e5;
+}
+.ai-live-dots span:nth-child(1) { animation-delay: 0s; }
+.ai-live-dots span:nth-child(2) { animation-delay: 0.2s; }
+.ai-live-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes liveDots {
+    0% { opacity: 0; }
+    50% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
 footer {
     text-align: center;
     font-size: 0.75rem;
