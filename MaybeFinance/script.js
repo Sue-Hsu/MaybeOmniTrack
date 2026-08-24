@@ -2604,7 +2604,8 @@ ${promptRules}
                         const total = cash + stk;
                         const exDate = item.CashExDividendTradingDate || item.StockExDividendTradingDate || '';
                         const payDate = item.CashDividendPaymentDate || '';
-                        const yr = item.year || (item.date ? item.date.slice(0, 4) + '年' : '歷年');
+                        const rawYr = item.year || (item.date ? item.date.slice(0, 4) + '年' : '歷年');
+                        const yr = formatDividendYear(rawYr, payDate, exDate);
                         // 組合主鍵 ID: stock_id + year + ex_date/date
                         const rowId = `${stock.id}_${item.date}_${yr}_${exDate || 'noex'}`.replace(/\s+/g, '_');
 
