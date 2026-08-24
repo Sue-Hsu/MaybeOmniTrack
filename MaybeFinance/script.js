@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chartType: 'line',
         goldViewMode: 'twd', // 'twd' (台灣金價 NT$/g) | 'tsin' (銀樓 NT$/錢) | 'usd' (國際金價 USD/oz) | 'dual' (雙軸)
         cachedGoldList: [],
+        geminiUsage: { date: '', count: 0, totalTokens: 0 },
         
         // 系統設定 (Firebase 保險庫與 Google 後台管理)
         config: {
@@ -204,6 +205,7 @@ document.addEventListener('DOMContentLoaded', () => {
         await initSupabaseDataPipeline();
         initStocksSection();
         initFxAndGoldSection();
+        loadGeminiUsage();
         renderAppAuthGates();
     }
 
@@ -734,6 +736,12 @@ document.addEventListener('DOMContentLoaded', () => {
             btnFetchGeminiModels.addEventListener('click', () => fetchAvailableGeminiModels(true));
         }
 
+        // 檢測 Gemini 配額事件
+        const btnCheckGeminiQuota = document.getElementById('btn-check-gemini-quota');
+        if (btnCheckGeminiQuota) {
+            btnCheckGeminiQuota.addEventListener('click', () => checkGeminiQuota(true));
+        }
+
         // 特定帳號密碼登入
         btnCustomLogin.addEventListener('click', async () => {
             await fetchSecretsFromFirebase();
@@ -1037,6 +1045,133 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // =========================================================================
+    // Gemini AI Studio 配額追蹤與檢測模組
+    // =========================================================================
+    function loadGeminiUsage() {
+        const todayStr = new Date().toISOString().split('T')[0];
+        try {
+            const raw = localStorage.getItem('maybe_gemini_usage');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed.date === todayStr) {
+                    state.geminiUsage = parsed;
+                } else {
+                    state.geminiUsage = { date: todayStr, count: 0, totalTokens: 0 };
+                    localStorage.setItem('maybe_gemini_usage', JSON.stringify(state.geminiUsage));
+                }
+            } else {
+                state.geminiUsage = { date: todayStr, count: 0, totalTokens: 0 };
+            }
+        } catch (e) {
+            state.geminiUsage = { date: todayStr, count: 0, totalTokens: 0 };
+        }
+        updateGeminiQuotaDisplay();
+    }
+
+    function recordGeminiCall(tokenCount = 0) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        if (state.geminiUsage.date !== todayStr) {
+            state.geminiUsage = { date: todayStr, count: 0, totalTokens: 0 };
+        }
+        state.geminiUsage.count = (state.geminiUsage.count || 0) + 1;
+        state.geminiUsage.totalTokens = (state.geminiUsage.totalTokens || 0) + tokenCount;
+        try {
+            localStorage.setItem('maybe_gemini_usage', JSON.stringify(state.geminiUsage));
+        } catch (e) {}
+        updateGeminiQuotaDisplay();
+    }
+
+    function updateGeminiQuotaDisplay() {
+        const quotaBadgeText = document.getElementById('gemini-quota-text');
+        const quotaBadge = document.getElementById('gemini-quota-badge');
+        const count = state.geminiUsage.count || 0;
+        const dailyLimit = 1500;
+        const remaining = Math.max(0, dailyLimit - count);
+
+        if (quotaBadgeText) {
+            quotaBadgeText.textContent = `Gemini 今日調用: ${count} / ${dailyLimit} 次 (剩餘 ${remaining} 次)`;
+        }
+
+        if (quotaBadge) {
+            if (count >= dailyLimit) {
+                quotaBadge.style.background = '#fef2f2';
+                quotaBadge.style.color = '#dc2626';
+                quotaBadge.style.borderColor = '#fca5a5';
+            } else if (count >= 1200) {
+                quotaBadge.style.background = '#fffbeb';
+                quotaBadge.style.color = '#d97706';
+                quotaBadge.style.borderColor = '#fde68a';
+            } else {
+                quotaBadge.style.background = '#eef2ff';
+                quotaBadge.style.color = '#4338ca';
+                quotaBadge.style.borderColor = '#c7d2fe';
+            }
+        }
+    }
+
+    async function checkGeminiQuota(showPrompt = false) {
+        const adminGeminiKey = document.getElementById('admin-gemini-key');
+        const apiKey = (adminGeminiKey && adminGeminiKey.value.trim()) || state.config.geminiApiKey;
+        const adminResult = document.getElementById('gemini-quota-admin-result');
+        const count = state.geminiUsage.count || 0;
+        const dailyLimit = 1500;
+        const remaining = Math.max(0, dailyLimit - count);
+        const tokens = state.geminiUsage.totalTokens || 0;
+
+        if (!apiKey) {
+            if (adminResult) {
+                adminResult.style.display = 'block';
+                adminResult.style.color = '#dc2626';
+                adminResult.textContent = '❌ 尚未填入 Gemini API Key！請先貼上 API Key 後再檢測。';
+            }
+            if (showPrompt) alert('尚未設定 Google AI Studio (Gemini) API Key！請在後台填入 API Key。');
+            return;
+        }
+
+        if (adminResult) {
+            adminResult.style.display = 'block';
+            adminResult.style.color = '#4338ca';
+            adminResult.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在連線 Google AI Studio 檢測 API Key 與官方配額...';
+        }
+
+        try {
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+            const msg = `🟢 Google AI Studio API Key 連線正常！\n📊 今日累計調用：${count} / ${dailyLimit} 次 (RPD，剩餘 ${remaining} 次)\n📈 今日累計消耗：約 ${tokens.toLocaleString()} Tokens\n⚡ 官方免費方案配額上限：\n   • 每日上限 (RPD)：1,500 次/天\n   • 每分鐘上限 (RPM)：15 次/分鐘\n   • 每分鐘 Token (TPM)：1,000,000 Tokens/分\n🔗 官方用量與帳單中心：https://aistudio.google.com/app/plan_information`;
+
+            if (adminResult) {
+                adminResult.style.color = '#166534';
+                adminResult.innerHTML = `
+                    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 0.6rem; border-radius: 6px; line-height: 1.5;">
+                        <div><strong style="color: #15803d;">🟢 連線正常！</strong> 今日調用: <strong>${count} / ${dailyLimit} 次</strong> (剩餘 <strong>${remaining}</strong> 次)</div>
+                        <div style="font-size: 0.72rem; color: #166534; margin-top: 0.25rem;">
+                            ⚡ 免費額度上限: 15 次/分 (RPM) ｜ 1,500 次/日 (RPD) ｜ 100萬 Tokens/分
+                        </div>
+                        <div style="margin-top: 0.35rem;">
+                            <a href="https://aistudio.google.com/app/plan_information" target="_blank" style="color: #2563eb; font-size: 0.72rem; text-decoration: underline;">
+                                ↗ 前往 Google AI Studio 官方用量與帳單儀表板
+                            </a>
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (showPrompt) {
+                alert(msg);
+            }
+        } catch (err) {
+            console.warn("Gemini quota test failed:", err);
+            const errMsg = `❌ Gemini API Key 檢測失敗 (代碼: ${err.message})，請確認金鑰是否有效或未被 Google 停用。`;
+            if (adminResult) {
+                adminResult.style.color = '#dc2626';
+                adminResult.innerHTML = `⚠️ ${errMsg}`;
+            }
+            if (showPrompt) alert(errMsg);
+        }
+    }
+
     // 全站未登入 vs 已登入權限閘門切換
     function renderAppAuthGates() {
         const isAuth = !!state.currentUser;
@@ -1143,11 +1278,13 @@ ${promptRules}
 
                 if (res.ok) {
                     const json = await res.json();
+                    const tokenCount = (json.usageMetadata && json.usageMetadata.totalTokenCount) || 0;
+                    recordGeminiCall(tokenCount);
                     let rawText = json.candidates[0].content.parts[0].text.trim();
                     if (rawText.startsWith('```json')) rawText = rawText.replace(/^```json/, '').replace(/```$/, '').trim();
                     else if (rawText.startsWith('```')) rawText = rawText.replace(/^```/, '').replace(/```$/, '').trim();
                     const parsed = JSON.parse(rawText);
-                    console.log(`🤖 [Gemini AI 模型 (${selectedModel}) 診斷成功]`, parsed);
+                    console.log(`🤖 [Gemini AI 模型 (${selectedModel}) 診斷成功 (消耗 ${tokenCount} Tokens)]`, parsed);
                     return parsed;
                 }
             } catch (aiErr) {
@@ -1245,6 +1382,12 @@ ${promptRules}
         const btnRefreshAllStocks = document.getElementById('btn-refresh-all-stocks');
         if (btnRefreshAllStocks) {
             btnRefreshAllStocks.addEventListener('click', () => refreshAllStockPrices(true));
+        }
+
+        // Gemini AI 配額徽章點擊事件
+        const geminiQuotaBadge = document.getElementById('gemini-quota-badge');
+        if (geminiQuotaBadge) {
+            geminiQuotaBadge.addEventListener('click', () => checkGeminiQuota(true));
         }
 
         // 批次匯入股票彈窗與處理流程
