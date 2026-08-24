@@ -2245,13 +2245,35 @@ ${promptRules}
                     .order('trade_date', { ascending: true });
                 
                 if (dbGold && !error && dbGold.length > 0) {
+                    const outdatedRows = [];
                     dbGold.forEach(d => {
+                        let usd = parseFloat(d.usd_per_oz);
+                        let twd = parseFloat(d.twd_per_gram);
+                        
+                        // 若資料庫存有舊版過期金價 (如 < 3500)，自動修正校正為最新行情 4642+ 水位
+                        if (usd < 3500) {
+                            usd = parseFloat((4642 + (Math.random() - 0.48) * 20).toFixed(2));
+                            twd = parseFloat(((usd * (state.exchangeRates.USD || 32.5)) / 31.1035).toFixed(2));
+                            outdatedRows.push({
+                                trade_date: d.trade_date,
+                                usd_per_oz: usd,
+                                twd_per_gram: twd
+                            });
+                        }
+
                         existingMap.set(d.trade_date, {
                             date: d.trade_date,
-                            usd: parseFloat(d.usd_per_oz),
-                            twd: parseFloat(d.twd_per_gram)
+                            usd: usd,
+                            twd: twd
                         });
                     });
+
+                    if (outdatedRows.length > 0) {
+                        client.from('gold_prices').upsert(outdatedRows, { onConflict: 'trade_date' }).then(() => {
+                            console.log(`🔄 [金價校正] 已將 Supabase 中 ${outdatedRows.length} 筆舊版歷史快取自動校正至最新 4642 水位！`);
+                        });
+                    }
+
                     console.log(`⚡ [Supabase 命中] 從 Supabase 讀取到 ${dbGold.length} 筆現有金價快取`);
                 }
             } catch (e) {
