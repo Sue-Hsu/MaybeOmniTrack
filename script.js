@@ -1,7 +1,7 @@
 /**
  * MaybeOmniTrack - 財務白癡救星 全功能核心程式碼
  * 包含：外幣匯率（支援多幣別換算 from_currency / to_currency）、黃金牌告、存股健檢、K線歷史走勢、
- *       Google OAuth / 特定帳號雙登入、Firebase 機密保險庫、Supabase 關聯資料庫（DB-First 全自動同步）
+ *       Google OAuth / 特定帳號雙登入、Firebase 機密保險庫、Supabase 關聯資料庫（支援 ID 主鍵與 onConflict 智慧快取）
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -461,7 +461,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     category_tag: s.category,
                     diagnosis_note: s.diagnosis
                 }));
-                const { error: seedErr } = await client.from('stocks').upsert(seedRows);
+                const { error: seedErr } = await client.from('stocks').upsert(seedRows, { onConflict: 'stock_id' });
                 if (seedErr) console.error("stocks upsert error:", seedErr);
                 else console.log("✅ [Supabase] 14 檔股票已成功寫入 Supabase！");
             }
@@ -513,7 +513,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 cash_buy: d.cash_buy || d.spot_buy,
                 rate: d.spot_sell
             }));
-            const { error } = await client.from('exchange_rates').upsert(rows);
+            const { error } = await client.from('exchange_rates').upsert(rows, { onConflict: 'trade_date,from_currency,to_currency' });
             if (error) console.error("Supabase exchange_rates upsert error:", error);
             else console.log(`✅ [Supabase] 成功寫入 ${rows.length} 筆 USD -> TWD 匯率資料！`);
         } catch (e) {
@@ -534,7 +534,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 usd_per_oz: d.usd,
                 twd_per_gram: d.twd
             }));
-            const { error } = await client.from('gold_prices').upsert(rows);
+            const { error } = await client.from('gold_prices').upsert(rows, { onConflict: 'trade_date' });
             if (error) console.error("Supabase gold_prices upsert error:", error);
             else console.log(`✅ [Supabase] 成功寫入 ${rows.length} 筆金價資料！`);
         } catch (e) {
@@ -553,7 +553,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 { key: 'admin_emails', value: state.config.adminGoogleEmails },
                 { key: 'google_client_id', value: state.config.googleClientId }
             ];
-            await client.from('system_settings').upsert(settingsRows);
+            await client.from('system_settings').upsert(settingsRows, { onConflict: 'key' });
         } catch (e) {
             console.warn("Save settings to Supabase error", e);
         }
@@ -950,7 +950,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     state.watchlist.add(stock.id);
                     if (client) {
-                        client.from('watchlist').upsert({ user_id: 'shared_user', stock_id: stock.id, stock_name: stock.name });
+                        client.from('watchlist').upsert({ user_id: 'shared_user', stock_id: stock.id, stock_name: stock.name }, { onConflict: 'user_id,stock_id' });
                     }
                 }
                 localStorage.setItem('maybe_omni_watchlist', JSON.stringify([...state.watchlist]));
@@ -1270,7 +1270,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     cash_buy: d.cash_buy || d.spot_buy,
                     rate: d.spot_sell
                 }));
-                const { error } = await client.from('exchange_rates').upsert(rows);
+                const { error } = await client.from('exchange_rates').upsert(rows, { onConflict: 'trade_date,from_currency,to_currency' });
                 if (error) console.error("Supabase exchange_rates upsert error:", error);
                 else console.log(`💾 [自動入庫] 已將 ${rows.length} 筆 ${fromCurr} -> ${toCurr} 匯率快取至 Supabase！`);
             }
@@ -1335,7 +1335,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     usd_per_oz: d.usd,
                     twd_per_gram: d.twd
                 }));
-                const { error } = await client.from('gold_prices').upsert(rows);
+                const { error } = await client.from('gold_prices').upsert(rows, { onConflict: 'trade_date' });
                 if (error) console.error("Supabase gold_prices upsert error:", error);
                 else console.log(`💾 [自動入庫] 已將 ${rows.length} 筆金價快取至 Supabase！`);
             }
