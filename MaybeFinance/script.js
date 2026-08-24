@@ -2549,7 +2549,7 @@ ${promptRules}
                     .gte('trade_date', startStr)
                     .order('trade_date', { ascending: true });
                 
-                if (dbPrices && !error && dbPrices.length >= Math.floor(state.chartRange * 0.45)) {
+                if (dbPrices && !error && dbPrices.length > 0) {
                     chartData = dbPrices.map(d => ({
                         date: d.trade_date,
                         close: parseFloat(d.close_price),
