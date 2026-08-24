@@ -13,6 +13,10 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Firebase SDK (App, Auth, Firestore) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <!-- Google Identity Services (GIS) -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -494,6 +498,16 @@
                     <div class="form-group">
                         <label for="admin-gold-key">GoldAPI.io Access Token</label>
                         <input type="password" id="admin-gold-key" placeholder="goldapi-xxxxxxxxxxxxxxx">
+                    </div>
+                </div>
+
+                <!-- 4. Firebase 機密保險庫 (儲存 Supabase Key 與特定帳密) -->
+                <div class="admin-section-box">
+                    <h4><i class="fa-brands fa-google"></i> Firebase 機密保險庫 (跨裝置自動調用)</h4>
+                    <p class="text-sm text-muted">填入 Firebase Web Config，登入 Google 後便可從 Firebase 自動調用 Supabase API Key 與特定帳密，免手動搬移。</p>
+                    <div class="form-group">
+                        <label for="admin-firebase-config">Firebase Web Config (貼上 JSON 物件)</label>
+                        <textarea id="admin-firebase-config" rows="4" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0.5rem; font-family: monospace; font-size: 0.8rem;" placeholder='{"apiKey": "AIzaSy...", "projectId": "your-project", "authDomain": "..."}'></textarea>
                     </div>
                 </div>
 

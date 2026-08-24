@@ -1,6 +1,7 @@
 /**
  * MaybeOmniTrack - 財務白癡救星 全功能核心程式碼
- * 包含：匯率金價、存股健檢、K線歷史走勢、Google OAuth / 特定帳號雙登入、指定管理員白名單、Supabase 資料庫整合
+ * 包含：外幣匯率、黃金牌告、存股健檢、K線歷史走勢、Google OAuth / 特定帳號雙登入、
+ *       Firebase 機密保險庫 (自動跨裝置調用 Supabase 金鑰與特定帳密)、Supabase 關聯資料庫
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -9,7 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================================
     const state = {
         currentUser: null, // { name: '', email: '', role: 'admin' | 'user' }
-        activeTab: 'view-fx-gold',
+        activeTab: 'view-fx',
         currentFilter: 'all',
         searchTerm: '',
         watchlist: new Set(['2886', '2412', '5880']), // 預設自選
@@ -17,7 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chartRange: 90,
         chartType: 'line',
         
-        // 系統設定 (支援 Google 管理員在後台修改，程式碼無金鑰外洩風險)
+        // 系統設定 (由 Firebase 保險庫與 Google 後台管理，GitHub 零金鑰外洩)
         config: {
             customUser: 'admin',
             customPass: '123456',
@@ -25,7 +26,8 @@ document.addEventListener('DOMContentLoaded', () => {
             supabaseKey: '',
             goldApiKey: '',
             googleClientId: '432499293288-35d73h2vaf2q5u1kv816d7m15h3utmdr.apps.googleusercontent.com',
-            adminGoogleEmails: '' // 指定管理員 Gmail 清單，例如 "admin@gmail.com, kilin@gmail.com"
+            adminGoogleEmails: '', // 指定管理員 Gmail 清單，例如 "admin@gmail.com, kilin@gmail.com"
+            firebaseConfig: ''     // Firebase Web Config JSON
         },
         
         // 匯率暫存
@@ -158,6 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const adminGoldKey = document.getElementById('admin-gold-key');
     const adminGoogleClientId = document.getElementById('admin-google-client-id');
     const adminGoogleEmails = document.getElementById('admin-google-emails');
+    const adminFirebaseConfig = document.getElementById('admin-firebase-config');
     const btnSaveAdminSettings = document.getElementById('btn-save-admin-settings');
 
     // 股票健檢與篩選
@@ -217,17 +220,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================================
     // 3. 初始化程序
     // =========================================================================
-    function initApp() {
+    async function initApp() {
         loadSavedConfig();
         setupDates();
         initNavigation();
         initAuthHandlers();
+        initFirebaseVault();
+        await fetchSecretsFromFirebase();
         initGoogleIdentityServices();
         initStocksSection();
         initFxAndGoldSection();
     }
 
-    // 讀取設定
+    // 讀取本地快取設定
     function loadSavedConfig() {
         try {
             const saved = localStorage.getItem('maybe_omni_config');
@@ -292,11 +297,86 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // =========================================================================
-    // 5. Google Identity Services (GIS) 與指定管理員判定
+    // 5. Firebase 機密保險庫 (跨裝置自動調用 Supabase API Key 與特定帳密)
+    // =========================================================================
+    let firestoreDb = null;
+
+    function initFirebaseVault() {
+        if (!state.config.firebaseConfig || typeof firebase === 'undefined') return;
+        try {
+            let conf = null;
+            if (typeof state.config.firebaseConfig === 'string') {
+                // 支援直接貼上 JSON 或 JS 物件字串
+                let cleanStr = state.config.firebaseConfig.trim();
+                if (!cleanStr.startsWith('{')) {
+                    // 若使用者貼上的是 const firebaseConfig = { ... }
+                    const match = cleanStr.match(/\{[\s\S]*\}/);
+                    if (match) cleanStr = match[0];
+                }
+                conf = JSON.parse(cleanStr);
+            } else {
+                conf = state.config.firebaseConfig;
+            }
+
+            if (conf && conf.apiKey && !firebase.apps.length) {
+                firebase.initializeApp(conf);
+            }
+            if (firebase.apps.length) {
+                firestoreDb = firebase.firestore();
+                console.log("🔥 Firebase Vault initialized successfully.");
+            }
+        } catch (e) {
+            console.warn("Firebase Vault init warning:", e);
+        }
+    }
+
+    async function fetchSecretsFromFirebase() {
+        if (!firestoreDb) return;
+        try {
+            const doc = await firestoreDb.collection('app_config').doc('secrets').get();
+            if (doc.exists) {
+                const data = doc.data();
+                if (data.supabase_url) state.config.supabaseUrl = data.supabase_url;
+                if (data.supabase_key) state.config.supabaseKey = data.supabase_key;
+                if (data.gold_key) state.config.goldApiKey = data.gold_key;
+                if (data.custom_user) state.config.customUser = data.custom_user;
+                if (data.custom_pass) state.config.customPass = data.custom_pass;
+                if (data.admin_emails) state.config.adminGoogleEmails = data.admin_emails;
+                if (data.google_client_id) state.config.googleClientId = data.google_client_id;
+                
+                localStorage.setItem('maybe_omni_config', JSON.stringify(state.config));
+                console.log("🔥 Secrets auto-loaded from Firebase Vault!");
+            }
+        } catch (e) {
+            console.warn("Fetch from Firebase Vault error:", e);
+        }
+    }
+
+    async function saveSecretsToFirebase() {
+        if (!firestoreDb) initFirebaseVault();
+        if (!firestoreDb) return;
+        try {
+            await firestoreDb.collection('app_config').doc('secrets').set({
+                supabase_url: state.config.supabaseUrl,
+                supabase_key: state.config.supabaseKey,
+                gold_key: state.config.goldApiKey,
+                custom_user: state.config.customUser,
+                custom_pass: state.config.customPass,
+                admin_emails: state.config.adminGoogleEmails,
+                google_client_id: state.config.googleClientId,
+                updated_at: new Date().toISOString()
+            }, { merge: true });
+            console.log("🔥 Secrets saved to Firebase Vault successfully!");
+        } catch (e) {
+            console.warn("Save to Firebase Vault error:", e);
+        }
+    }
+
+    // =========================================================================
+    // 6. Google Identity Services (GIS) 與指定管理員判定
     // =========================================================================
     function initGoogleIdentityServices() {
         if (typeof google === 'undefined' || !google.accounts || !google.accounts.id) {
-            console.log("Google GIS library not loaded or offline, fallback enabled.");
             return;
         }
 
@@ -308,7 +388,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 cancel_on_tap_outside: true
             });
 
-            // 渲染官方 Google 登入按鈕
             if (googleBtnContainer) {
                 googleBtnContainer.innerHTML = '';
                 google.accounts.id.renderButton(googleBtnContainer, {
@@ -326,7 +405,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // JWT Payload 解碼
     function decodeJwt(token) {
         try {
             const base64Url = token.split('.')[1];
@@ -340,8 +418,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Google 登入回傳處理
-    function handleGoogleCredentialResponse(response) {
+    async function handleGoogleCredentialResponse(response) {
         const payload = decodeJwt(response.credential);
         if (!payload || !payload.email) {
             alert("Google 登入驗證失敗，無法讀取帳號資訊。");
@@ -351,7 +428,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const userEmail = payload.email.toLowerCase().trim();
         const userName = payload.name || payload.email.split('@')[0];
 
-        // 檢查管理員 Gmail 白名單
+        // 登入後從 Firebase 保險庫拉取最新金鑰與設定
+        await fetchSecretsFromFirebase();
+
         let isAdmin = false;
         const adminEmailsList = state.config.adminGoogleEmails
             .toLowerCase()
@@ -360,9 +439,9 @@ document.addEventListener('DOMContentLoaded', () => {
             .filter(e => e.length > 0);
 
         if (adminEmailsList.length === 0) {
-            // 若尚未設定任何管理員名單，則首位登入之 Google 帳號自動晉升並設定為管理者
             state.config.adminGoogleEmails = userEmail;
             localStorage.setItem('maybe_omni_config', JSON.stringify(state.config));
+            saveSecretsToFirebase();
             isAdmin = true;
             alert(`🎉 恭喜！檢測到首次使用 Google 登入，系統已自動將您 (${userEmail}) 指定為最高管理員！`);
         } else {
@@ -372,7 +451,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isAdmin) {
             setLoggedInUser({ name: `${userName} (Google)`, email: userEmail, role: 'admin' });
             loginModal.style.display = 'none';
-            alert(`👑 歡迎管理員 ${userName} (${userEmail}) 登入！後台設定功能已解鎖。`);
+            alert(`👑 歡迎管理員 ${userName} (${userEmail}) 登入！後台設定功能已解鎖，已自動調用雲端金鑰。`);
         } else {
             setLoggedInUser({ name: `${userName} (Google)`, email: userEmail, role: 'user' });
             loginModal.style.display = 'none';
@@ -381,7 +460,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // =========================================================================
-    // 6. 身分認證與管理員後台事件
+    // 7. 身分認證與管理員後台事件
     // =========================================================================
     function initAuthHandlers() {
         btnOpenLogin.addEventListener('click', () => {
@@ -402,12 +481,15 @@ document.addEventListener('DOMContentLoaded', () => {
             adminGoldKey.value = state.config.goldApiKey;
             adminGoogleClientId.value = state.config.googleClientId;
             adminGoogleEmails.value = state.config.adminGoogleEmails;
+            adminFirebaseConfig.value = typeof state.config.firebaseConfig === 'string' ? state.config.firebaseConfig : JSON.stringify(state.config.firebaseConfig, null, 2);
             adminModal.style.display = 'flex';
         });
         btnCloseAdminModal.addEventListener('click', () => adminModal.style.display = 'none');
 
         // 特定帳號密碼登入
-        btnCustomLogin.addEventListener('click', () => {
+        btnCustomLogin.addEventListener('click', async () => {
+            // 登入前先向 Firebase 同步一次最新帳密
+            await fetchSecretsFromFirebase();
             const u = inputCustomUser.value.trim();
             const p = inputCustomPass.value.trim();
             if (u === state.config.customUser && p === state.config.customPass) {
@@ -419,7 +501,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // 測試模式 Google 登入 (當未聯網或本機 file:// 協議無法使用 GIS 時)
+        // 測試模式 Google 登入
         btnGoogleFallback.addEventListener('click', () => {
             const mockEmail = prompt("請輸入您的 Google Gmail 進行測試驗證：", "admin@gmail.com");
             if (mockEmail) {
@@ -447,19 +529,27 @@ document.addEventListener('DOMContentLoaded', () => {
             state.config.goldApiKey = adminGoldKey.value.trim();
             state.config.googleClientId = adminGoogleClientId.value.trim();
             state.config.adminGoogleEmails = adminGoogleEmails.value.trim();
+            state.config.firebaseConfig = adminFirebaseConfig.value.trim();
 
             localStorage.setItem('maybe_omni_config', JSON.stringify(state.config));
             
-            // 重置 client 並同步寫入 Supabase
+            // 1. 同步儲存至 Firebase 保險庫 (跨裝置自動調用)
+            initFirebaseVault();
+            await saveSecretsToFirebase();
+
+            // 2. 同步儲存至 Supabase 資料表
             supabaseClient = null;
             await saveSettingsToSupabase();
 
             adminModal.style.display = 'none';
             initGoogleIdentityServices();
-            alert('✅ 雲端與系統設定儲存成功！特定帳密與 API 金鑰已即時同步至 Supabase 雲端！');
+            alert('✅ 雲端與系統設定儲存成功！已同步至 Firebase 保險庫與 Supabase，在任何裝置登入 Google 即可自動連線！');
         });
     }
 
+    // =========================================================================
+    // 8. Supabase 資料庫連線
+    // =========================================================================
     let supabaseClient = null;
 
     function getSupabaseClient() {
@@ -473,26 +563,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         return null;
-    }
-
-    async function syncSettingsFromSupabase() {
-        const client = getSupabaseClient();
-        if (!client) return;
-        try {
-            const { data, error } = await client.from('system_settings').select('*');
-            if (data && !error && data.length > 0) {
-                data.forEach(row => {
-                    if (row.key === 'custom_user') state.config.customUser = row.value;
-                    if (row.key === 'custom_pass') state.config.customPass = row.value;
-                    if (row.key === 'gold_key') state.config.goldApiKey = row.value;
-                    if (row.key === 'admin_emails') state.config.adminGoogleEmails = row.value;
-                    if (row.key === 'google_client_id') state.config.googleClientId = row.value;
-                });
-                localStorage.setItem('maybe_omni_config', JSON.stringify(state.config));
-            }
-        } catch (e) {
-            console.warn("Settings sync from Supabase error", e);
-        }
     }
 
     async function saveSettingsToSupabase() {
@@ -542,17 +612,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // =========================================================================
-    // 7. 股票存股 5 大維度健檢篩選器
+    // 9. 股票存股 5 大維度健檢篩選器
     // =========================================================================
     function initStocksSection() {
-        // 折疊速查卡切換
         rulesToggleBtn.addEventListener('click', () => {
             const isHidden = rulesBodyContent.style.display === 'none';
             rulesBodyContent.style.display = isHidden ? 'block' : 'none';
             rulesToggleIcon.classList.toggle('rotate', isHidden);
         });
 
-        // 篩選標籤
         filterChips.forEach(chip => {
             chip.addEventListener('click', () => {
                 filterChips.forEach(c => c.classList.remove('active'));
@@ -562,16 +630,13 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        // 搜尋框
         stockSearchInput.addEventListener('input', (e) => {
             state.searchTerm = e.target.value.trim().toLowerCase();
             renderStocks();
         });
 
-        // 股票圖表 Modal 關閉
         btnCloseStockModal.addEventListener('click', () => stockChartModal.style.display = 'none');
 
-        // 圖表時間範圍按鈕
         rangeButtons.forEach(btn => {
             btn.addEventListener('click', () => {
                 rangeButtons.forEach(b => b.classList.remove('active'));
@@ -583,7 +648,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        // 圖表類型切換
         btnTypeLine.addEventListener('click', () => {
             btnTypeLine.classList.add('active');
             btnTypeCandle.classList.remove('active');
@@ -601,50 +665,41 @@ document.addEventListener('DOMContentLoaded', () => {
         renderStocks();
     }
 
-    // 存股健檢演算法 (5大維度 8項量化指標判定)
     function evaluateStockHealth(stock) {
         const metrics = [];
         let score = 0;
 
-        // 1. 股本 > 300 億
         const passCap = stock.marketCap >= 300;
         if (passCap) score++;
         metrics.push({ label: '股本規模', val: `${stock.marketCap} 億`, pass: passCap ? 'pass' : 'warn', desc: passCap ? '≥300億 大型不倒翁' : '中小型需留意流動性' });
 
-        // 2. 近 5 年平均 EPS > 1
         const passEps = stock.eps5y >= 1.0;
         if (passEps) score++;
         metrics.push({ label: '5年平均EPS', val: `${stock.eps5y} 元`, pass: passEps ? 'pass' : 'fail', desc: passEps ? '獲利穩定達標' : '獲利過低或衰退' });
 
-        // 3. 連續配息 ≥ 10 年
         const passDivYears = stock.divYears >= 10;
         if (passDivYears) score++;
         metrics.push({ label: '連續配息', val: `${stock.divYears} 年`, pass: passDivYears ? 'pass' : 'warn', desc: passDivYears ? '歷經多空考驗' : '<10年觀察中' });
 
-        // 4. 盈餘分配率 ≥ 70%
         const passPayout = stock.payoutRatio >= 70;
         if (passPayout) score++;
         metrics.push({ label: '盈餘分配率', val: `${stock.payoutRatio}%`, pass: passPayout ? 'pass' : 'warn', desc: passPayout ? '公司大方分紅' : '<70% 保留盈餘較多' });
 
-        // 5. 現金殖利率 ≥ 5.0%
         let passYield = 'fail';
         if (stock.yield >= 5.0) { passYield = 'pass'; score++; }
         else if (stock.yield >= 4.0) { passYield = 'warn'; }
         metrics.push({ label: '現金殖利率', val: `${stock.yield}%`, pass: passYield, desc: stock.yield >= 5.0 ? '≥5% 便宜好買點' : '<5% 偏貴建議暫緩' });
 
-        // 6. Beta 波動係數 < 0.8
         let passBeta = 'fail';
         if (stock.beta < 0.6) { passBeta = 'pass'; score++; }
         else if (stock.beta <= 0.85) { passBeta = 'pass'; score++; }
         else { passBeta = 'warn'; }
         metrics.push({ label: 'Beta 波動度', val: `${stock.beta}`, pass: passBeta, desc: stock.beta < 0.8 ? '牛皮抗跌抱得安心' : '波動較大適合價差' });
 
-        // 7. 股價淨值比 PB < 2.5
         const passPb = stock.pb < 2.5;
         if (passPb) score++;
         metrics.push({ label: '股價淨值比', val: `${stock.pb}`, pass: passPb ? 'pass' : 'fail', desc: passPb ? '<2.5 未過度炒作' : '股價偏離淨值過高' });
 
-        // 8. 本益比 PE < 20
         const passPe = stock.pe <= 20;
         if (passPe) score++;
         metrics.push({ label: '本益比 PE', val: `${stock.pe}`, pass: passPe ? 'pass' : 'warn', desc: passPe ? '物美價廉' : '偏高需評估成長性' });
@@ -740,7 +795,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
 
-            // 自選事件
             const starBtn = card.querySelector('.btn-star-fav');
             starBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -753,7 +807,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderStocks();
             });
 
-            // 圖表事件
             const chartBtn = card.querySelector('.btn-view-chart');
             chartBtn.addEventListener('click', () => {
                 state.selectedStockForChart = stock;
@@ -768,7 +821,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // =========================================================================
-    // 8. 股票歷史行情圖表
+    // 10. 股票歷史行情圖表
     // =========================================================================
     async function renderStockChart(stock) {
         let chartData = [];
@@ -872,7 +925,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // =========================================================================
-    // 9. 匯率與金價原有邏輯整合
+    // 11. 匯率與金價原有邏輯整合
     // =========================================================================
     function initFxAndGoldSection() {
         const calc = () => {
