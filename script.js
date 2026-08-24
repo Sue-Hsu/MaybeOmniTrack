@@ -1,7 +1,7 @@
 /**
  * MaybeOmniTrack - 財務白癡救星 全功能核心程式碼
- * 包含：外幣匯率、黃金牌告、存股健檢、K線歷史走勢、Google OAuth / 特定帳號雙登入、
- *       Firebase 機密保險庫、Supabase 關聯資料庫（DB-First 全自動同步與自動入庫引擎）
+ * 包含：外幣匯率（支援多幣別換算 from_currency / to_currency）、黃金牌告、存股健檢、K線歷史走勢、
+ *       Google OAuth / 特定帳號雙登入、Firebase 機密保險庫、Supabase 關聯資料庫（DB-First 全自動同步）
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -466,8 +466,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 else console.log("✅ [Supabase] 14 檔股票已成功寫入 Supabase！");
             }
 
-            // 3. 檢查並自動初始化匯率資料表 (exchange_rates)
-            const { data: dbFx } = await client.from('exchange_rates').select('trade_date').limit(5);
+            // 3. 檢查並自動初始化匯率資料表 (exchange_rates: 支援 from_currency & to_currency)
+            const { data: dbFx } = await client.from('exchange_rates').select('trade_date').eq('from_currency', 'USD').eq('to_currency', 'TWD').limit(5);
             if (!dbFx || dbFx.length === 0) {
                 console.log("🌱 [Supabase] exchange_rates 表格為空，自動抓取並寫入近期匯率...");
                 await fetchAndSaveFxToSupabase(client);
@@ -504,15 +504,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const rows = list.map(d => ({
                 trade_date: d.date,
+                from_currency: 'USD',
+                to_currency: 'TWD',
                 currency: 'USD',
                 spot_sell: d.spot_sell,
                 spot_buy: d.spot_buy,
                 cash_sell: d.cash_sell || d.spot_sell,
-                cash_buy: d.cash_buy || d.spot_buy
+                cash_buy: d.cash_buy || d.spot_buy,
+                rate: d.spot_sell
             }));
             const { error } = await client.from('exchange_rates').upsert(rows);
             if (error) console.error("Supabase exchange_rates upsert error:", error);
-            else console.log(`✅ [Supabase] 成功寫入 ${rows.length} 筆匯率資料！`);
+            else console.log(`✅ [Supabase] 成功寫入 ${rows.length} 筆 USD -> TWD 匯率資料！`);
         } catch (e) {
             console.error("fetchAndSaveFxToSupabase error:", e);
         }
@@ -1121,7 +1124,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // =========================================================================
-    // 11. 匯率與金價 (Supabase 優先查詢與自動存檔)
+    // 11. 匯率與金價 (支援多幣別換算 from_currency -> to_currency)
     // =========================================================================
     function initFxAndGoldSection() {
         const calc = () => {
@@ -1134,13 +1137,20 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         amountInput.addEventListener('input', calc);
-        fromCurrency.addEventListener('change', calc);
-        toCurrency.addEventListener('change', calc);
+        fromCurrency.addEventListener('change', () => {
+            calc();
+            fetchFxHistory(startDateInput.value, endDateInput.value);
+        });
+        toCurrency.addEventListener('change', () => {
+            calc();
+            fetchFxHistory(startDateInput.value, endDateInput.value);
+        });
         swapBtn.addEventListener('click', () => {
             const tmp = fromCurrency.value;
             fromCurrency.value = toCurrency.value;
             toCurrency.value = tmp;
             calc();
+            fetchFxHistory(startDateInput.value, endDateInput.value);
         });
 
         searchBtn.addEventListener('click', () => fetchFxHistory(startDateInput.value, endDateInput.value));
@@ -1201,17 +1211,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function fetchFxHistory(start, end) {
+        const fromCurr = fromCurrency ? fromCurrency.value : 'USD';
+        const toCurr = toCurrency ? toCurrency.value : 'TWD';
         let list = [];
         const client = getSupabaseClient();
         let hitSupabase = false;
 
-        // 1. 先查 Supabase exchange_rates
+        // 1. 先查 Supabase exchange_rates (依 from_currency 與 to_currency 查詢)
         if (client) {
             try {
                 const { data: dbFx, error } = await client
                     .from('exchange_rates')
                     .select('*')
-                    .eq('currency', 'USD')
+                    .eq('from_currency', fromCurr)
+                    .eq('to_currency', toCurr)
                     .gte('trade_date', start)
                     .lte('trade_date', end)
                     .order('trade_date', { ascending: true });
@@ -1219,11 +1232,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (dbFx && !error && dbFx.length > 5) {
                     list = dbFx.map(d => ({
                         date: d.trade_date,
-                        spot_sell: parseFloat(d.spot_sell),
-                        spot_buy: parseFloat(d.spot_buy)
+                        spot_sell: parseFloat(d.spot_sell || d.rate),
+                        spot_buy: parseFloat(d.spot_buy || d.rate)
                     }));
                     hitSupabase = true;
-                    console.log(`⚡ [Supabase 命中] 成功從 Supabase 載入 ${list.length} 筆匯率！`);
+                    console.log(`⚡ [Supabase 命中] 成功從 Supabase 載入 ${fromCurr} -> ${toCurr} ${list.length} 筆匯率！`);
                 }
             } catch (e) {
                 console.warn("Supabase exchange_rates error:", e);
@@ -1233,26 +1246,33 @@ document.addEventListener('DOMContentLoaded', () => {
         // 2. 未命中才呼叫 FinMind 並自動入庫
         if (!hitSupabase) {
             try {
-                const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanExchangeRate&data_id=USD&start_date=${start}&end_date=${end}`);
+                const targetCurrency = fromCurr === 'TWD' ? toCurr : fromCurr;
+                const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanExchangeRate&data_id=${targetCurrency}&start_date=${start}&end_date=${end}`);
                 const json = await res.json();
-                if (json.msg === 'success' && json.data) {
+                if (json.msg === 'success' && json.data && json.data.length > 0) {
                     list = json.data;
-                    if (client && list.length > 0) {
-                        const rows = list.map(d => ({
-                            trade_date: d.date,
-                            currency: 'USD',
-                            spot_sell: d.spot_sell,
-                            spot_buy: d.spot_buy,
-                            cash_sell: d.cash_sell || d.spot_sell,
-                            cash_buy: d.cash_buy || d.spot_buy
-                        }));
-                        const { error } = await client.from('exchange_rates').upsert(rows);
-                        if (error) console.error("Supabase exchange_rates upsert error:", error);
-                        else console.log(`💾 [自動入庫] 已將 ${rows.length} 筆匯率快取至 Supabase！`);
-                    }
+                } else {
+                    list = generateMockFx(start, end);
                 }
             } catch (e) {
                 list = generateMockFx(start, end);
+            }
+
+            if (client && list.length > 0) {
+                const rows = list.map(d => ({
+                    trade_date: d.date,
+                    from_currency: fromCurr,
+                    to_currency: toCurr,
+                    currency: fromCurr,
+                    spot_sell: d.spot_sell,
+                    spot_buy: d.spot_buy,
+                    cash_sell: d.cash_sell || d.spot_sell,
+                    cash_buy: d.cash_buy || d.spot_buy,
+                    rate: d.spot_sell
+                }));
+                const { error } = await client.from('exchange_rates').upsert(rows);
+                if (error) console.error("Supabase exchange_rates upsert error:", error);
+                else console.log(`💾 [自動入庫] 已將 ${rows.length} 筆 ${fromCurr} -> ${toCurr} 匯率快取至 Supabase！`);
             }
         }
 
@@ -1262,8 +1282,8 @@ document.addEventListener('DOMContentLoaded', () => {
             data: {
                 labels: list.map(d => d.date),
                 datasets: [
-                    { label: '銀行賣出 (您付錢)', data: list.map(d => d.spot_sell), borderColor: '#dc2626', backgroundColor: 'rgba(220, 38, 38, 0.08)', borderWidth: 2, tension: 0.2, fill: true },
-                    { label: '銀行買入 (您換回)', data: list.map(d => d.spot_buy), borderColor: '#059669', backgroundColor: 'rgba(5, 150, 105, 0.08)', borderWidth: 2, tension: 0.2, fill: true }
+                    { label: `${fromCurr} 賣出價 (換成 ${toCurr})`, data: list.map(d => d.spot_sell), borderColor: '#dc2626', backgroundColor: 'rgba(220, 38, 38, 0.08)', borderWidth: 2, tension: 0.2, fill: true },
+                    { label: `${fromCurr} 買入價 (換回 ${toCurr})`, data: list.map(d => d.spot_buy), borderColor: '#059669', backgroundColor: 'rgba(5, 150, 105, 0.08)', borderWidth: 2, tension: 0.2, fill: true }
                 ]
             },
             options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false } }
