@@ -18,7 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chartRange: 90,
         chartType: 'line',
         
-        // 系統設定 (由 Firebase 保險庫與 Google 後台管理，GitHub 零金鑰外洩)
+        // 系統設定 (Firebase 保險庫與 Google 後台管理)
         config: {
             customUser: 'admin',
             customPass: '123456',
@@ -27,7 +27,15 @@ document.addEventListener('DOMContentLoaded', () => {
             goldApiKey: '',
             googleClientId: '432499293288-35d73h2vaf2q5u1kv816d7m15h3utmdr.apps.googleusercontent.com',
             adminGoogleEmails: '', // 指定管理員 Gmail 清單，例如 "admin@gmail.com, kilin@gmail.com"
-            firebaseConfig: ''     // Firebase Web Config JSON
+            firebaseConfig: {
+                apiKey: "AIzaSyCERr64-wlG1CFeIMTO_5SDxpy4UZPrpTA",
+                authDomain: "maybeomnitrack-7cdb1.firebaseapp.com",
+                projectId: "maybeomnitrack-7cdb1",
+                storageBucket: "maybeomnitrack-7cdb1.firebasestorage.app",
+                messagingSenderId: "421187111508",
+                appId: "1:421187111508:web:09cade3e6edf28a7eefbc1",
+                measurementId: "G-QCQRG86EYZ"
+            }
         },
         
         // 匯率暫存
@@ -306,10 +314,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             let conf = null;
             if (typeof state.config.firebaseConfig === 'string') {
-                // 支援直接貼上 JSON 或 JS 物件字串
                 let cleanStr = state.config.firebaseConfig.trim();
                 if (!cleanStr.startsWith('{')) {
-                    // 若使用者貼上的是 const firebaseConfig = { ... }
                     const match = cleanStr.match(/\{[\s\S]*\}/);
                     if (match) cleanStr = match[0];
                 }
@@ -331,6 +337,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function fetchSecretsFromFirebase() {
+        if (!firestoreDb) initFirebaseVault();
         if (!firestoreDb) return;
         try {
             const doc = await firestoreDb.collection('app_config').doc('secrets').get();
@@ -488,7 +495,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 特定帳號密碼登入
         btnCustomLogin.addEventListener('click', async () => {
-            // 登入前先向 Firebase 同步一次最新帳密
             await fetchSecretsFromFirebase();
             const u = inputCustomUser.value.trim();
             const p = inputCustomPass.value.trim();
@@ -533,11 +539,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             localStorage.setItem('maybe_omni_config', JSON.stringify(state.config));
             
-            // 1. 同步儲存至 Firebase 保險庫 (跨裝置自動調用)
             initFirebaseVault();
             await saveSecretsToFirebase();
 
-            // 2. 同步儲存至 Supabase 資料表
             supabaseClient = null;
             await saveSettingsToSupabase();
 
