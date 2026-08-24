@@ -541,23 +541,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function saveSettingsToSupabase() {
-        const client = getSupabaseClient();
-        if (!client) return;
-        try {
-            const settingsRows = [
-                { key: 'custom_user', value: state.config.customUser },
-                { key: 'custom_pass', value: state.config.customPass },
-                { key: 'gold_key', value: state.config.goldApiKey },
-                { key: 'admin_emails', value: state.config.adminGoogleEmails },
-                { key: 'google_client_id', value: state.config.googleClientId }
-            ];
-            await client.from('system_settings').upsert(settingsRows, { onConflict: 'key' });
-        } catch (e) {
-            console.warn("Save settings to Supabase error", e);
-        }
-    }
-
     // =========================================================================
     // 7. Google Identity Services (GIS) 與指定管理員判定
     // =========================================================================
@@ -717,9 +700,8 @@ document.addEventListener('DOMContentLoaded', () => {
             initFirebaseVault();
             await saveSecretsToFirebase();
 
-            // 2. 同步儲存至 Supabase 資料表並觸發全模組入庫
+            // 2. 重新初始化 Supabase 並觸發全模組入庫
             supabaseClient = null;
-            await saveSettingsToSupabase();
             await initSupabaseDataPipeline();
 
             // 3. 立即重整匯率與金價
