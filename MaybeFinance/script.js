@@ -147,6 +147,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnTypeCandle = document.getElementById('btn-type-candle');
 
     // 匯率與金價元素
+    const fxUnauthView = document.getElementById('fx-unauth-view');
+    const fxAuthView = document.getElementById('fx-auth-view');
+    const goldUnauthView = document.getElementById('gold-unauth-view');
+    const goldAuthView = document.getElementById('gold-auth-view');
     const amountInput = document.getElementById('amount');
     const fromCurrency = document.getElementById('from-currency');
     const toCurrency = document.getElementById('to-currency');
@@ -197,6 +201,7 @@ document.addEventListener('DOMContentLoaded', () => {
         await initSupabaseDataPipeline();
         initStocksSection();
         initFxAndGoldSection();
+        renderAppAuthGates();
     }
 
     function loadSavedConfig() {
@@ -482,28 +487,107 @@ document.addEventListener('DOMContentLoaded', () => {
             isAdmin = adminEmailsList.includes(userEmail);
         }
 
+        const client = getSupabaseClient();
+
         if (isAdmin) {
+            // 管理員自動建立/更新放行紀錄
+            if (client) {
+                try {
+                    await client.from('app_users').upsert({
+                        email: userEmail,
+                        name: userName,
+                        role: 'admin',
+                        status: 'approved',
+                        provider: 'google',
+                        note: '最高管理員',
+                        updated_at: new Date().toISOString()
+                    }, { onConflict: 'email' });
+                } catch (e) {
+                    console.warn("Admin upsert to app_users warning:", e);
+                }
+            }
             setLoggedInUser({ name: `${userName} (Google)`, email: userEmail, role: 'admin' });
             loginModal.style.display = 'none';
-            renderStocks();
-            alert(`👑 歡迎管理員 ${userName} (${userEmail}) 登入！後台設定與股票管理功能已解鎖。`);
+            alert(`👑 歡迎管理員 ${userName} (${userEmail}) 登入！後台設定與審核管理功能已解鎖。`);
+            return;
+        }
+
+        // 一般用戶：查詢 Supabase app_users 審核狀態
+        if (client) {
+            try {
+                const { data: userRows, error } = await client
+                    .from('app_users')
+                    .select('*')
+                    .eq('email', userEmail)
+                    .limit(1);
+
+                if (error && error.code === '42P01') {
+                    // 表格尚未建立，先提示管理員建立
+                    alert("⚠️ Supabase 尚未建立 app_users 資料表！請管理員至後台複製 SQL 建立表格。");
+                    return;
+                }
+
+                if (!userRows || userRows.length === 0) {
+                    // 首次申請：建立 pending 待審核紀錄
+                    const nowIso = new Date().toISOString();
+                    await client.from('app_users').insert({
+                        email: userEmail,
+                        name: userName,
+                        role: 'user',
+                        status: 'pending',
+                        provider: 'google',
+                        note: '新 Google 用戶註冊申請',
+                        created_at: nowIso,
+                        updated_at: nowIso
+                    });
+                    loginModal.style.display = 'none';
+                    alert(`⏳ 您的帳號 (${userEmail}) 已成功送出註冊審核申請！\n\n目前狀態為「🟡 待審核」，請等待系統管理員放行後即可登入使用。`);
+                    return;
+                }
+
+                const userRecord = userRows[0];
+                if (userRecord.status === 'approved') {
+                    // 已放行，允許登入
+                    await client.from('app_users').update({ updated_at: new Date().toISOString() }).eq('email', userEmail);
+                    setLoggedInUser({ name: `${userRecord.name || userName} (Google)`, email: userEmail, role: 'user' });
+                    loginModal.style.display = 'none';
+                    alert(`👋 歡迎 ${userName}！您的帳號已審核通過，全站匯率、金價與股票功能已解鎖。`);
+                } else if (userRecord.status === 'pending') {
+                    loginModal.style.display = 'none';
+                    alert(`⏳ 您的帳號 (${userEmail}) 正在等待管理員審核放行中，請聯繫管理員。`);
+                } else {
+                    loginModal.style.display = 'none';
+                    alert(`🚫 您的帳號 (${userEmail}) 已被停用或拒絕存取。若有疑問請向管理員確認。`);
+                }
+            } catch (err) {
+                console.error("User approval check error:", err);
+                alert("用戶審核驗證時發生錯誤：" + err.message);
+            }
         } else {
-            setLoggedInUser({ name: `${userName} (Google)`, email: userEmail, role: 'user' });
-            loginModal.style.display = 'none';
-            renderStocks();
-            alert(`👋 歡迎 ${userName} (${userEmail})！您目前為「一般用戶」檢視權限。`);
+            alert("⚠️ 系統尚未連線 Supabase 資料庫，無法驗證用戶權限。請聯繫管理員確認設定。");
         }
     }
 
     // =========================================================================
-    // 8. 身分認證與管理員後台事件
+    // 8. 身分認證與管理員後台事件 (雙頁籤 + 用戶審核)
     // =========================================================================
+    let cachedAdminUsers = [];
+    let currentAdminUserFilter = 'all';
+
     function initAuthHandlers() {
         btnOpenLogin.addEventListener('click', () => {
             loginModal.style.display = 'flex';
             initGoogleIdentityServices();
         });
         btnCloseLoginModal.addEventListener('click', () => loginModal.style.display = 'none');
+
+        // 未登入鎖定卡片上的立即登入按鈕
+        document.querySelectorAll('.btn-gate-login').forEach(btn => {
+            btn.addEventListener('click', () => {
+                loginModal.style.display = 'flex';
+                initGoogleIdentityServices();
+            });
+        });
         
         btnOpenAdmin.addEventListener('click', () => {
             if (!state.currentUser || state.currentUser.role !== 'admin') {
@@ -525,8 +609,112 @@ document.addEventListener('DOMContentLoaded', () => {
             if (state.config.geminiApiKey) {
                 fetchAvailableGeminiModels(false);
             }
+            loadAdminUsersList();
         });
         btnCloseAdminModal.addEventListener('click', () => adminModal.style.display = 'none');
+
+        // 管理員雙頁籤切換
+        const tabBtnAdminConfig = document.getElementById('tab-btn-admin-config');
+        const tabBtnAdminUsers = document.getElementById('tab-btn-admin-users');
+        const adminPanelConfig = document.getElementById('admin-panel-config');
+        const adminPanelUsers = document.getElementById('admin-panel-users');
+
+        if (tabBtnAdminConfig && tabBtnAdminUsers) {
+            tabBtnAdminConfig.addEventListener('click', () => {
+                tabBtnAdminConfig.classList.add('active');
+                tabBtnAdminUsers.classList.remove('active');
+                if (adminPanelConfig) adminPanelConfig.style.display = 'block';
+                if (adminPanelUsers) adminPanelUsers.style.display = 'none';
+            });
+            tabBtnAdminUsers.addEventListener('click', () => {
+                tabBtnAdminUsers.classList.add('active');
+                tabBtnAdminConfig.classList.remove('active');
+                if (adminPanelConfig) adminPanelConfig.style.display = 'none';
+                if (adminPanelUsers) adminPanelUsers.style.display = 'block';
+                loadAdminUsersList();
+            });
+        }
+
+        // 用戶管理搜尋與篩選
+        const adminUserSearch = document.getElementById('admin-user-search');
+        if (adminUserSearch) {
+            adminUserSearch.addEventListener('input', () => renderAdminUsersTable());
+        }
+
+        document.querySelectorAll('.user-filter-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                document.querySelectorAll('.user-filter-chip').forEach(c => c.classList.remove('active'));
+                chip.classList.add('active');
+                currentAdminUserFilter = chip.dataset.filter;
+                renderAdminUsersTable();
+            });
+        });
+
+        const btnRefreshAdminUsers = document.getElementById('btn-refresh-admin-users');
+        if (btnRefreshAdminUsers) {
+            btnRefreshAdminUsers.addEventListener('click', () => loadAdminUsersList(true));
+        }
+
+        // 手動新增用戶
+        const btnCreateAdminUser = document.getElementById('btn-create-admin-user');
+        if (btnCreateAdminUser) {
+            btnCreateAdminUser.addEventListener('click', async () => {
+                const emailInput = document.getElementById('new-user-email');
+                const nameInput = document.getElementById('new-user-name');
+                const statusInput = document.getElementById('new-user-status');
+                const noteInput = document.getElementById('new-user-note');
+                
+                const email = emailInput ? emailInput.value.trim().toLowerCase() : '';
+                if (!email || !email.includes('@')) {
+                    alert("請輸入有效的 Email 帳號！");
+                    return;
+                }
+                const name = (nameInput && nameInput.value.trim()) || email.split('@')[0];
+                const status = (statusInput && statusInput.value) || 'approved';
+                const note = (noteInput && noteInput.value.trim()) || '管理員手動新增';
+
+                const client = getSupabaseClient();
+                if (!client) {
+                    alert("請先完成 Supabase 資料庫連線設定！");
+                    return;
+                }
+
+                try {
+                    const nowIso = new Date().toISOString();
+                    const { error } = await client.from('app_users').upsert({
+                        email,
+                        name,
+                        role: 'user',
+                        status,
+                        provider: 'google',
+                        note,
+                        updated_at: nowIso
+                    }, { onConflict: 'email' });
+
+                    if (error) throw error;
+
+                    if (emailInput) emailInput.value = '';
+                    if (nameInput) nameInput.value = '';
+                    if (noteInput) noteInput.value = '';
+                    alert(`✅ 成功建立/放行用戶：${email}！`);
+                    loadAdminUsersList();
+                } catch (e) {
+                    alert("新增用戶失敗：" + e.message);
+                }
+            });
+        }
+
+        // 複製 SQL 建表代碼
+        const btnCopyUserSql = document.getElementById('btn-copy-user-sql');
+        if (btnCopyUserSql) {
+            btnCopyUserSql.addEventListener('click', () => {
+                const sqlText = document.getElementById('sql-app-users-code');
+                if (sqlText) {
+                    navigator.clipboard.writeText(sqlText.value);
+                    alert("📋 已將 app_users 建表 SQL 複製至剪貼簿！可直接至 Supabase SQL Editor 貼上執行。");
+                }
+            });
+        }
 
         // 讀取 Gemini 模型清單事件
         if (btnFetchGeminiModels) {
@@ -539,10 +727,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const u = inputCustomUser.value.trim();
             const p = inputCustomPass.value.trim();
             if (u === state.config.customUser && p === state.config.customPass) {
-                setLoggedInUser({ name: u, email: '', role: 'user' });
+                setLoggedInUser({ name: u, email: `${u}@system.local`, role: 'user' });
                 loginModal.style.display = 'none';
                 await initSupabaseDataPipeline();
-                renderStocks();
+                renderAppAuthGates();
                 alert(`歡迎回來，${u}！您已成功登入系統（一般用戶權限）。`);
             } else {
                 alert('帳號或密碼錯誤！請向管理員確認。');
@@ -553,10 +741,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btnLogout.addEventListener('click', () => {
             state.currentUser = null;
             localStorage.removeItem('maybe_omni_current_user');
-            unauthView.style.display = 'block';
-            authView.style.display = 'none';
-            btnOpenAdmin.style.display = 'none';
-            renderStocks();
+            renderAppAuthGates();
             alert('已安全登出。');
         });
 
@@ -584,89 +769,221 @@ document.addEventListener('DOMContentLoaded', () => {
             supabaseClient = null;
             await initSupabaseDataPipeline();
 
-            fetchFxHistory(startDateInput.value, endDateInput.value);
-            fetchGoldHistory(goldStartDateInput.value, goldEndDateInput.value);
-
             adminModal.style.display = 'none';
             initGoogleIdentityServices();
-            renderStocks();
+            renderAppAuthGates();
             alert(`✅ 雲端設定已成功同步至 Firebase！已啟用 Gemini 模型：${state.config.geminiModel}`);
         });
     }
 
-    // 連線 Google AI Studio 抓取支援 generateContent 的可用模型清單
-    async function fetchAvailableGeminiModels(showPrompt = false) {
-        const apiKey = (adminGeminiKey && adminGeminiKey.value.trim()) || state.config.geminiApiKey;
-        if (!apiKey) {
-            if (showPrompt) alert("請先填入 Google AI Studio (Gemini) API Key 才能讀取模型清單！");
+    // 載入 Supabase app_users 審核清單
+    async function loadAdminUsersList(showPrompt = false) {
+        const client = getSupabaseClient();
+        const tbody = document.getElementById('admin-users-tbody');
+        if (!client) {
+            if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #ef4444;">Supabase 尚未連線，請先在「系統核心設定」填妥 URL 與 Key。</td></tr>';
             return;
         }
 
-        if (geminiModelLoadStatus) {
-            geminiModelLoadStatus.style.display = 'block';
-            geminiModelLoadStatus.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在向 Google AI Studio 讀取模型清單...';
+        try {
+            const { data: users, error } = await client
+                .from('app_users')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #ef4444;">讀取失敗：${error.message} (請確認 app_users 資料表是否已建立)</td></tr>`;
+                return;
+            }
+
+            cachedAdminUsers = users || [];
+            updateAdminUserCounts();
+            renderAdminUsersTable();
+            if (showPrompt) alert(`🎉 已成功從 Supabase 同步 ${cachedAdminUsers.length} 筆用戶資料！`);
+        } catch (e) {
+            console.warn("loadAdminUsersList error:", e);
+        }
+    }
+
+    function updateAdminUserCounts() {
+        const pendingCount = cachedAdminUsers.filter(u => u.status === 'pending').length;
+        const approvedCount = cachedAdminUsers.filter(u => u.status === 'approved').length;
+        const rejectedCount = cachedAdminUsers.filter(u => u.status === 'rejected').length;
+
+        const countAll = document.getElementById('count-user-all');
+        const countPending = document.getElementById('count-user-pending');
+        const countApproved = document.getElementById('count-user-approved');
+        const countRejected = document.getElementById('count-user-rejected');
+        const adminPendingBadge = document.getElementById('admin-pending-count');
+
+        if (countAll) countAll.textContent = cachedAdminUsers.length;
+        if (countPending) countPending.textContent = pendingCount;
+        if (countApproved) countApproved.textContent = approvedCount;
+        if (countRejected) countRejected.textContent = rejectedCount;
+
+        if (adminPendingBadge) {
+            if (pendingCount > 0) {
+                adminPendingBadge.style.display = 'inline-block';
+                adminPendingBadge.textContent = pendingCount;
+            } else {
+                adminPendingBadge.style.display = 'none';
+            }
+        }
+    }
+
+    function renderAdminUsersTable() {
+        const tbody = document.getElementById('admin-users-tbody');
+        if (!tbody) return;
+
+        const searchInput = document.getElementById('admin-user-search');
+        const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+
+        let list = cachedAdminUsers.filter(u => {
+            const matchesFilter = currentAdminUserFilter === 'all' || u.status === currentAdminUserFilter;
+            const matchesSearch = !query || (u.email && u.email.toLowerCase().includes(query)) || (u.name && u.name.toLowerCase().includes(query)) || (u.note && u.note.toLowerCase().includes(query));
+            return matchesFilter && matchesSearch;
+        });
+
+        if (list.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #94a3b8; padding: 2rem;">查無符合條件的用戶紀錄。</td></tr>';
+            return;
         }
 
+        tbody.innerHTML = list.map(u => {
+            const statusBadge = u.status === 'approved' 
+                ? '<span class="status-badge-approved"><i class="fa-solid fa-circle-check"></i> 已放行</span>'
+                : u.status === 'pending'
+                ? '<span class="status-badge-pending"><i class="fa-solid fa-clock"></i> 待審核</span>'
+                : '<span class="status-badge-rejected"><i class="fa-solid fa-ban"></i> 已停用</span>';
+
+            const createdStr = u.created_at ? new Date(u.created_at).toLocaleString('zh-TW', { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '--';
+
+            return `
+                <tr>
+                    <td>${statusBadge}</td>
+                    <td><strong>${u.email}</strong> ${u.role === 'admin' ? '<span style="color: #d97706; font-size: 0.75rem;">(👑管理員)</span>' : ''}</td>
+                    <td>${u.name || '--'}</td>
+                    <td><span style="color: #64748b; font-size: 0.75rem;">${u.provider || 'google'}</span></td>
+                    <td style="color: #64748b; font-size: 0.75rem;">${createdStr}</td>
+                    <td>
+                        <span class="user-note-text" style="cursor: pointer; color: #2563eb;" title="點擊編輯備註" data-id="${u.id}" data-note="${u.note || ''}">
+                            ${u.note ? u.note : '<em style="color: #94a3b8;">+ 點此加備註</em>'}
+                        </span>
+                    </td>
+                    <td>
+                        <div style="display: flex; gap: 0.25rem;">
+                            ${u.status !== 'approved' ? `
+                                <button type="button" class="btn-action-user btn-action-approve" data-id="${u.id}" data-email="${u.email}" title="核准放行">
+                                    <i class="fa-solid fa-check"></i> 放行
+                                </button>
+                            ` : `
+                                <button type="button" class="btn-action-user btn-action-reject" data-id="${u.id}" data-email="${u.email}" title="停用訪問">
+                                    <i class="fa-solid fa-ban"></i> 停用
+                                </button>
+                            `}
+                            <button type="button" class="btn-action-user btn-action-del" data-id="${u.id}" data-email="${u.email}" title="刪除紀錄">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        // 綁定操作按鈕事件
+        tbody.querySelectorAll('.btn-action-approve').forEach(b => {
+            b.addEventListener('click', () => updateAdminUserStatus(b.dataset.id, 'approved', b.dataset.email));
+        });
+        tbody.querySelectorAll('.btn-action-reject').forEach(b => {
+            b.addEventListener('click', () => updateAdminUserStatus(b.dataset.id, 'rejected', b.dataset.email));
+        });
+        tbody.querySelectorAll('.btn-action-del').forEach(b => {
+            b.addEventListener('click', () => deleteAdminUser(b.dataset.id, b.dataset.email));
+        });
+        tbody.querySelectorAll('.user-note-text').forEach(n => {
+            n.addEventListener('click', () => updateAdminUserNote(n.dataset.id, n.dataset.note));
+        });
+    }
+
+    async function updateAdminUserStatus(id, newStatus, email) {
+        const client = getSupabaseClient();
+        if (!client) return;
         try {
-            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
+            const { error } = await client
+                .from('app_users')
+                .update({ status: newStatus, updated_at: new Date().toISOString() })
+                .eq('id', id);
 
-            // 過濾支援 generateContent 的模型（排除純向量 embedding 等模型）
-            const models = (data.models || []).filter(m => {
-                const isGen = m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent');
-                const name = m.name || '';
-                return isGen && !name.includes('embedding') && !name.includes('aqa') && !name.includes('imagen');
-            });
+            if (error) throw error;
+            console.log(`✅ 用戶 ${email} 狀態已變更為 ${newStatus}`);
+            loadAdminUsersList();
+        } catch (e) {
+            alert("更新狀態失敗：" + e.message);
+        }
+    }
 
-            if (models.length > 0 && adminGeminiModel) {
-                // 將 Flash 模型排在最前 (優先排序 3.6 / 3.7 / 2.5 / 1.5)
-                models.sort((a, b) => {
-                    const aName = a.name.toLowerCase();
-                    const bName = b.name.toLowerCase();
-                    const getScore = (n) => {
-                        if (n.includes('3.6') && n.includes('flash')) return 1;
-                        if (n.includes('3.7') && n.includes('flash')) return 2;
-                        if (n.includes('2.5') && n.includes('flash')) return 3;
-                        if (n.includes('1.5') && n.includes('flash')) return 4;
-                        if (n.includes('flash')) return 5;
-                        return 10;
-                    };
-                    return getScore(aName) - getScore(bName);
-                });
+    async function updateAdminUserNote(id, currentNote) {
+        const newNote = prompt("請輸入此用戶的管理員備註：", currentNote || '');
+        if (newNote === null) return;
+        const client = getSupabaseClient();
+        if (!client) return;
+        try {
+            const { error } = await client
+                .from('app_users')
+                .update({ note: newNote.trim(), updated_at: new Date().toISOString() })
+                .eq('id', id);
+            if (error) throw error;
+            loadAdminUsersList();
+        } catch (e) {
+            alert("更新備註失敗：" + e.message);
+        }
+    }
 
-                const currentSelection = state.config.geminiModel || 'gemini-3.6-flash';
-                adminGeminiModel.innerHTML = '';
+    async function deleteAdminUser(id, email) {
+        if (!confirm(`確定要刪除用戶【${email}】的審核紀錄嗎？`)) return;
+        const client = getSupabaseClient();
+        if (!client) return;
+        try {
+            const { error } = await client.from('app_users').delete().eq('id', id);
+            if (error) throw error;
+            loadAdminUsersList();
+        } catch (e) {
+            alert("刪除失敗：" + e.message);
+        }
+    }
 
-                models.forEach(m => {
-                    const cleanName = m.name.replace(/^models\//, '');
-                    const isFlash = cleanName.toLowerCase().includes('flash');
-                    const opt = document.createElement('option');
-                    opt.value = cleanName;
-                    opt.textContent = `${isFlash ? '⚡ [免費高速] ' : '🧠 [深度推理] '} ${m.displayName || cleanName} (${cleanName})`;
-                    if (cleanName === currentSelection) opt.selected = true;
-                    adminGeminiModel.appendChild(opt);
-                });
+    // 全站未登入 vs 已登入權限閘門切換
+    function renderAppAuthGates() {
+        const isAuth = !!state.currentUser;
 
-                if (geminiModelLoadStatus) {
-                    geminiModelLoadStatus.innerHTML = `✅ 成功讀取 ${models.length} 個可用 Gemini 模型！`;
-                }
-                if (showPrompt) alert(`🎉 成功從 Google AI Studio 讀取到 ${models.length} 個可用模型！請在下拉選單中挑選。`);
-            }
-        } catch (err) {
-            console.warn("Gemini list models failed:", err);
-            if (geminiModelLoadStatus) {
-                geminiModelLoadStatus.innerHTML = `⚠️ 無法連線讀取清單，將使用預設模型選單。`;
-            }
-            if (showPrompt) alert("讀取模型清單失敗，請確認 API Key 是否正確。");
+        if (isAuth) {
+            unauthView.style.display = 'none';
+            authView.style.display = 'flex';
+            if (fxUnauthView) fxUnauthView.style.display = 'none';
+            if (fxAuthView) fxAuthView.style.display = 'block';
+            if (goldUnauthView) goldUnauthView.style.display = 'none';
+            if (goldAuthView) goldAuthView.style.display = 'block';
+
+            fetchFxInsights();
+            fetchFxHistory(startDateInput.value, endDateInput.value);
+            fetchGoldHistory(goldStartDateInput.value, goldEndDateInput.value);
+            checkGoldApiQuota(false);
+            renderStocks();
+        } else {
+            unauthView.style.display = 'block';
+            authView.style.display = 'none';
+            btnOpenAdmin.style.display = 'none';
+            if (fxUnauthView) fxUnauthView.style.display = 'block';
+            if (fxAuthView) fxAuthView.style.display = 'none';
+            if (goldUnauthView) goldUnauthView.style.display = 'block';
+            if (goldAuthView) goldAuthView.style.display = 'none';
+            renderStocks();
         }
     }
 
     function setLoggedInUser(user) {
         state.currentUser = user;
         localStorage.setItem('maybe_omni_current_user', JSON.stringify(user));
-        unauthView.style.display = 'none';
-        authView.style.display = 'flex';
         userDisplayName.textContent = user.name;
         
         if (user.role === 'admin') {
@@ -680,6 +997,7 @@ document.addEventListener('DOMContentLoaded', () => {
             userRoleBadge.style.color = '#1e40af';
             btnOpenAdmin.style.display = 'none';
         }
+        renderAppAuthGates();
     }
 
     // =========================================================================
@@ -1599,10 +1917,7 @@ ${promptRules}
         const btnCheckGoldQuota = document.getElementById('btn-check-gold-quota');
         if (btnCheckGoldQuota) btnCheckGoldQuota.addEventListener('click', () => checkGoldApiQuota(true));
 
-        fetchFxInsights();
-        fetchFxHistory(startDateInput.value, endDateInput.value);
-        fetchGoldHistory(goldStartDateInput.value, goldEndDateInput.value);
-        checkGoldApiQuota(false);
+        // 若已登入則由 renderAppAuthGates 自動調用 API 載入數據
     }
 
     async function checkGoldApiQuota(showPrompt = false) {
