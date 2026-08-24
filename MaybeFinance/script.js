@@ -2925,19 +2925,45 @@ ${promptRules}
                 const monthLimit = data.requests_limit ?? headerLimit ?? 100;
                 const remaining = headerRemaining ? parseInt(headerRemaining) : Math.max(0, monthLimit - monthUsed);
 
+                state.goldApiQuotaRemaining = remaining;
+                try { sessionStorage.setItem('goldapi_remaining', String(remaining)); } catch(e) {}
+
                 const msg = `本月剩餘：${remaining} 次 (已用 ${monthUsed} / 上限 ${monthLimit})`;
-                if (quotaBadgeText) quotaBadgeText.textContent = `GoldAPI 本月剩餘: ${remaining} 次`;
+                if (quotaBadgeText) {
+                    if (remaining <= 0) {
+                        quotaBadgeText.textContent = 'GoldAPI 本月額度已耗盡 (0 次)';
+                        quotaBadgeText.style.color = '#ef4444';
+                    } else {
+                        quotaBadgeText.textContent = `GoldAPI 本月剩餘: ${remaining} 次`;
+                        quotaBadgeText.style.color = '';
+                    }
+                }
                 if (adminResult) {
                     adminResult.style.display = 'block';
                     adminResult.textContent = `📊 ${msg}`;
                 }
                 if (showPrompt) alert(`📊 GoldAPI.io 本月額度狀態：\n${msg}`);
             } else {
+                if (res.status === 429 || res.status === 403) {
+                    state.goldApiQuotaRemaining = 0;
+                    try { sessionStorage.setItem('goldapi_remaining', '0'); } catch(e) {}
+                    if (quotaBadgeText) {
+                        quotaBadgeText.textContent = 'GoldAPI 本月額度已耗盡 (0 次)';
+                        quotaBadgeText.style.color = '#ef4444';
+                    }
+                }
                 throw new Error(`HTTP ${res.status}`);
             }
         } catch (err) {
             console.warn("GoldAPI quota query fallback", err);
-            if (quotaBadgeText) quotaBadgeText.textContent = 'GoldAPI 連線正常';
+            if (state.goldApiQuotaRemaining === 0) {
+                if (quotaBadgeText) {
+                    quotaBadgeText.textContent = 'GoldAPI 本月額度已耗盡 (0 次)';
+                    quotaBadgeText.style.color = '#ef4444';
+                }
+            } else {
+                if (quotaBadgeText) quotaBadgeText.textContent = 'GoldAPI 連線正常';
+            }
             if (adminResult) {
                 adminResult.style.display = 'block';
                 adminResult.textContent = '可直接至 goldapi.io/dashboard 查看額度';
@@ -3220,13 +3246,48 @@ ${promptRules}
             }
         }
 
-        // 4. 若有設定 GoldAPI Key，額外抓取今日即時現貨報價以確保分秒最新
-        if (goldKey) {
+        // 4. 若有設定 GoldAPI Key 且額度 > 0，額外抓取今日即時現貨報價；若額度為 0 則防呆阻擋，不發送請求
+        const savedQuota = (state.goldApiQuotaRemaining !== null && state.goldApiQuotaRemaining !== undefined)
+            ? state.goldApiQuotaRemaining
+            : (sessionStorage.getItem('goldapi_remaining') !== null ? parseInt(sessionStorage.getItem('goldapi_remaining'), 10) : null);
+
+        if (goldKey && savedQuota !== 0) {
             try {
                 console.log("🌐 [GoldAPI] 正在向官方 API 抓取今日即時金價...");
                 const res = await fetch("https://www.goldapi.io/api/XAU/USD", {
                     headers: { "x-access-token": goldKey }
                 });
+
+                // 動態讀取 Header 剩餘額度
+                const headerRemaining = res.headers.get("x-ratelimit-remaining");
+                if (headerRemaining !== null) {
+                    const rNum = parseInt(headerRemaining, 10);
+                    state.goldApiQuotaRemaining = rNum;
+                    try { sessionStorage.setItem('goldapi_remaining', String(rNum)); } catch(e) {}
+                    const quotaBadgeText = document.getElementById('gold-quota-text');
+                    if (quotaBadgeText) {
+                        if (rNum <= 0) {
+                            quotaBadgeText.textContent = 'GoldAPI 本月額度已耗盡 (0 次)';
+                            quotaBadgeText.style.color = '#ef4444';
+                        } else {
+                            quotaBadgeText.textContent = `GoldAPI 本月剩餘: ${rNum} 次`;
+                            quotaBadgeText.style.color = '';
+                        }
+                    }
+                }
+
+                if (res.status === 429 || res.status === 403) {
+                    state.goldApiQuotaRemaining = 0;
+                    try { sessionStorage.setItem('goldapi_remaining', '0'); } catch(e) {}
+                    const quotaBadgeText = document.getElementById('gold-quota-text');
+                    if (quotaBadgeText) {
+                        quotaBadgeText.textContent = 'GoldAPI 本月額度已耗盡 (0 次)';
+                        quotaBadgeText.style.color = '#ef4444';
+                    }
+                    console.warn("⚠️ [GoldAPI 防呆阻擋] 收到 429/403 額度用盡，自動停止後續請求。");
+                    return;
+                }
+
                 if (res.ok) {
                     const j = await res.json();
                     if (j.price) {
@@ -3252,6 +3313,8 @@ ${promptRules}
             } catch (err) {
                 console.warn("GoldAPI live fetch error:", err);
             }
+        } else if (goldKey && savedQuota === 0) {
+            console.log("🛡️ [GoldAPI 防呆機制] 本月額度為 0 次，已自動跳過 GoldAPI 請求，改採 FinMind 與 Supabase 快取！");
         }
 
         list = Array.from(existingMap.values()).sort((a, b) => a.date.localeCompare(b.date));
