@@ -2622,7 +2622,15 @@ ${promptRules}
                         };
                     });
 
-                    // 3. 自動整批入庫至 Supabase stock_dividends
+                    // 3. 智慧推論標註精準配息期別 (如 2026Q3, 2026H1, 2024/05)
+                    dividendList = enrichDividendList(dividendList);
+                    dividendList.forEach(item => {
+                        if (item.formatted_period) {
+                            item.year = item.formatted_period;
+                        }
+                    });
+
+                    // 4. 自動整批入庫至 Supabase stock_dividends
                     if (client && dividendList.length > 0) {
                         try {
                             const { error: upsertErr } = await client
@@ -2664,6 +2672,94 @@ ${promptRules}
 
         // 5. 渲染配息表格與統計指標
         renderDividendUI(dividendList, stock);
+    }
+
+    function enrichDividendList(list) {
+        if (!list || list.length === 0) return list;
+
+        // 1. 按西元年度分組收集所有紀錄
+        const yearGroups = {};
+        list.forEach(item => {
+            const dStr = (item.ex_dividend_date && item.ex_dividend_date !== '--') 
+                ? item.ex_dividend_date 
+                : ((item.payment_date && item.payment_date !== '--') ? item.payment_date : (item.announcement_date || ''));
+            
+            let y = dStr.slice(0, 4);
+            if (!y || isNaN(parseInt(y, 10))) {
+                const numMatch = (item.year || '').match(/(\d{2,4})/);
+                if (numMatch) {
+                    const n = parseInt(numMatch[1], 10);
+                    y = String(n < 1900 ? n + 1911 : n);
+                }
+            }
+            if (y && /^\d{4}$/.test(y)) {
+                if (!yearGroups[y]) yearGroups[y] = [];
+                yearGroups[y].push(item);
+            }
+        });
+
+        // 2. 計算歷史最高單年配息次數以判斷頻率
+        const counts = Object.values(yearGroups).map(arr => arr.length);
+        const maxCount = Math.max(1, ...counts);
+
+        let freq = 'annual'; // 'monthly' | 'quarterly' | 'half' | 'annual'
+        if (maxCount >= 6) {
+            freq = 'monthly';
+        } else if (maxCount >= 3) {
+            freq = 'quarterly';
+        } else if (maxCount === 2) {
+            freq = 'half';
+        }
+
+        // 3. 逐年為每筆紀錄標註精準期別 (例如 2026Q3、2026H1、2024/05、2026)
+        Object.keys(yearGroups).forEach(yStr => {
+            const rows = yearGroups[yStr];
+            // 依除息日/公告日排序 (早到晚)
+            rows.sort((a, b) => {
+                const da = a.ex_dividend_date || a.payment_date || a.announcement_date || '';
+                const db = b.ex_dividend_date || b.payment_date || b.announcement_date || '';
+                return da.localeCompare(db);
+            });
+
+            rows.forEach((row, idx) => {
+                // 如果字串本身已包含明確指定 (如 114Q4 或 114H1 或 05月)
+                const explicit = formatDividendYear(row.year, row.payment_date, row.ex_dividend_date);
+                if (explicit.includes('Q') || explicit.includes('H') || explicit.includes('/')) {
+                    row.formatted_period = explicit;
+                    return;
+                }
+
+                const dStr = (row.ex_dividend_date && row.ex_dividend_date !== '--') 
+                    ? row.ex_dividend_date 
+                    : ((row.payment_date && row.payment_date !== '--') ? row.payment_date : (row.announcement_date || ''));
+                const monthVal = parseInt(dStr.slice(5, 7), 10);
+
+                if (freq === 'monthly') {
+                    const mm = monthVal ? String(monthVal).padStart(2, '0') : String(idx + 1).padStart(2, '0');
+                    row.formatted_period = `${yStr}/${mm}`;
+                } else if (freq === 'quarterly') {
+                    let q = 1;
+                    if (monthVal) {
+                        q = Math.ceil(monthVal / 3);
+                    } else {
+                        q = Math.min(4, idx + 1);
+                    }
+                    row.formatted_period = `${yStr}Q${q}`;
+                } else if (freq === 'half') {
+                    let h = 1;
+                    if (monthVal) {
+                        h = monthVal <= 6 ? 1 : 2;
+                    } else {
+                        h = idx === 0 ? 1 : 2;
+                    }
+                    row.formatted_period = `${yStr}H${h}`;
+                } else {
+                    row.formatted_period = yStr;
+                }
+            });
+        });
+
+        return list;
     }
 
     function formatDividendYear(rawYear, payDate, exDate) {
@@ -2732,6 +2828,7 @@ ${promptRules}
 
     function calculateAnnualCashDividend(dividendList) {
         if (!dividendList || dividendList.length === 0) return 0;
+        dividendList = enrichDividendList(dividendList);
 
         // 判斷是否為月配息 / 季配息 / 半年配
         const yearCountMap = {};
@@ -2740,7 +2837,7 @@ ${promptRules}
         let isHalfYear = false;
 
         dividendList.forEach(item => {
-            const formattedYr = formatDividendYear(item.year, item.payment_date, item.ex_dividend_date);
+            const formattedYr = item.formatted_period || formatDividendYear(item.year, item.payment_date, item.ex_dividend_date);
             if (formattedYr.includes('/')) {
                 isMonthly = true;
             } else if (formattedYr.includes('Q')) {
@@ -2776,6 +2873,9 @@ ${promptRules}
     }
 
     function renderDividendUI(list, stock) {
+        if (!list) list = [];
+        list = enrichDividendList(list);
+
         if (dividendBadgeCount) dividendBadgeCount.textContent = `${list.length} 筆`;
 
         if (!list || list.length === 0) {
@@ -2794,7 +2894,7 @@ ${promptRules}
         // 近 3 年 / 近 5 年現金股利平均 (按西元年度加總計算)
         const yearCashMap = {};
         list.forEach(item => {
-            const formattedYr = formatDividendYear(item.year, item.payment_date, item.ex_dividend_date);
+            const formattedYr = item.formatted_period || formatDividendYear(item.year, item.payment_date, item.ex_dividend_date);
             const yKey = formattedYr.slice(0, 4); // 擷取 4 碼西元年 (例如 2025, 2024)
             if (yKey && /^\d{4}$/.test(yKey)) {
                 yearCashMap[yKey] = (yearCashMap[yKey] || 0) + (parseFloat(item.cash_dividend) || 0);
@@ -2810,8 +2910,8 @@ ${promptRules}
 
         const latestItem = list[0];
         const latestEx = (latestItem && latestItem.ex_dividend_date && latestItem.ex_dividend_date !== '--') 
-            ? latestItem.ex_dividend_date 
-            : (latestItem && latestItem.announcement_date) || '--';
+            ? latestItem.ex_dividend_date.replace(/-/g, '/') 
+            : ((latestItem && latestItem.announcement_date) ? latestItem.announcement_date.replace(/-/g, '/') : '--');
 
         if (divStatCount) divStatCount.textContent = `${totalCount} 次`;
         if (divStatAvg3) divStatAvg3.textContent = `NT$ ${avg3}`;
@@ -2820,7 +2920,7 @@ ${promptRules}
 
         if (stockDividendTbody) {
             stockDividendTbody.innerHTML = list.map(item => {
-                const formattedYear = formatDividendYear(item.year, item.payment_date, item.ex_dividend_date);
+                const formattedYear = item.formatted_period || formatDividendYear(item.year, item.payment_date, item.ex_dividend_date);
                 const safeYear = escapeHtml(formattedYear);
 
                 const safeCash = parseFloat(item.cash_dividend || 0).toFixed(2);
