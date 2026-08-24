@@ -1283,10 +1283,14 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const promptText = `
 你是一位精通台灣股市與存股理財的專業資深架構分析師。
-請根據以下【存股大師 4 大經典選股法則與 5 大維度標準】：
+請嚴格根據以下【存股大師 4 大經典選股法則與 5 大維度標準】：
 ${promptRules}
 
-請為台股標的【${code} ${name}】(當前參考價約 NT$ ${price}) 進行客觀診斷。
+請為被 <target_stock> 標籤所包覆的台股標的進行客觀診斷：
+<target_stock code="${escapeHtml(code)}" price="${Number(price) || 0}">
+  ${escapeHtml(name)}
+</target_stock>
+
 請輸出嚴格符合以下結構的 JSON 字串（勿加上 markdown 標籤以外的多餘雜訊）：
 {
   "category": "dividend 或 cashflow 或 swing (只能是這三者之一)",
@@ -1321,8 +1325,8 @@ ${promptRules}
                             const tokenCount = (json.usageMetadata && json.usageMetadata.totalTokenCount) || 0;
                             recordGeminiCall(tokenCount);
                             let rawText = json.candidates[0].content.parts[0].text.trim();
-                            if (rawText.startsWith('```json')) rawText = rawText.replace(/^```json/, '').replace(/```$/, '').trim();
-                            else if (rawText.startsWith('```')) rawText = rawText.replace(/^```/, '').replace(/```$/, '').trim();
+                            const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+                            if (jsonMatch) rawText = jsonMatch[0];
                             const parsed = JSON.parse(rawText);
                             parsed._source = 'gemini';
                             parsed._model = modelName;
