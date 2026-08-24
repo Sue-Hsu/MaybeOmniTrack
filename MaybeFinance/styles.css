@@ -1412,3 +1412,23 @@ footer {
     color: #94a3b8;
     margin-top: 2rem;
 }
+
+/* 股票詳情彈窗子頁籤樣式 */
+.modal-sub-nav .sub-tab-btn {
+    transition: all 0.2s ease;
+}
+.modal-sub-nav .sub-tab-btn:hover {
+    background: #f1f5f9;
+    color: var(--text-main);
+}
+.modal-sub-nav .sub-tab-btn.active {
+    background: #eef2ff !important;
+    color: #4338ca !important;
+}
+
+.dividend-summary-grid .div-stat-card {
+    transition: transform 0.2s ease;
+}
+.dividend-summary-grid .div-stat-card:hover {
+    transform: translateY(-2px);
+}

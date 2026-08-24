@@ -586,21 +586,78 @@
             </div>
             
             <div class="modal-body">
-                <div class="chart-controls-bar">
-                    <div class="btn-group-range">
-                        <button class="btn-range active" data-range="30">1 個月</button>
-                        <button class="btn-range" data-range="90">3 個月</button>
-                        <button class="btn-range" data-range="180">半年</button>
-                        <button class="btn-range" data-range="365">1 年</button>
+                <!-- 走勢圖 vs 配息紀錄 子頁籤 -->
+                <div class="modal-sub-nav" style="display: flex; gap: 0.5rem; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem;">
+                    <button type="button" class="sub-tab-btn active" id="subtab-btn-kline" style="padding: 0.45rem 1rem; border-radius: 8px; border: none; background: #eef2ff; color: #4338ca; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem;">
+                        <i class="fa-solid fa-chart-line"></i> 歷史走勢與 K 線
+                    </button>
+                    <button type="button" class="sub-tab-btn" id="subtab-btn-dividend" style="padding: 0.45rem 1rem; border-radius: 8px; border: none; background: transparent; color: #64748b; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem;">
+                        <i class="fa-solid fa-hand-holding-dollar"></i> 歷年/各季配息紀錄
+                        <span id="dividend-badge-count" style="font-size: 0.72rem; background: #f1f5f9; color: #475569; padding: 0.1rem 0.45rem; border-radius: 999px;">0 筆</span>
+                    </button>
+                </div>
+
+                <!-- 視圖一：K 線與收盤走勢 -->
+                <div id="stock-modal-kline-view">
+                    <div class="chart-controls-bar">
+                        <div class="btn-group-range">
+                            <button class="btn-range active" data-range="30">1 個月</button>
+                            <button class="btn-range" data-range="90">3 個月</button>
+                            <button class="btn-range" data-range="180">半年</button>
+                            <button class="btn-range" data-range="365">1 年</button>
+                        </div>
+                        <div class="btn-group-type">
+                            <button class="btn-chart-type active" id="btn-type-line"><i class="fa-solid fa-chart-line"></i> 平滑收盤線</button>
+                            <button class="btn-chart-type" id="btn-type-candle"><i class="fa-solid fa-chart-column"></i> 日 K 線模式</button>
+                        </div>
                     </div>
-                    <div class="btn-group-type">
-                        <button class="btn-chart-type active" id="btn-type-line"><i class="fa-solid fa-chart-line"></i> 平滑收盤線</button>
-                        <button class="btn-chart-type" id="btn-type-candle"><i class="fa-solid fa-chart-column"></i> 日 K 線模式</button>
+
+                    <div class="stock-chart-wrapper">
+                        <canvas id="stock-modal-chart"></canvas>
                     </div>
                 </div>
 
-                <div class="stock-chart-wrapper">
-                    <canvas id="stock-modal-chart"></canvas>
+                <!-- 視圖二：歷年與各季配息紀錄 (含 Supabase 自動快取入庫) -->
+                <div id="stock-modal-dividend-view" style="display: none;">
+                    <!-- 統計小卡 -->
+                    <div class="dividend-summary-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.65rem; margin-bottom: 1rem;">
+                        <div class="div-stat-card" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.6rem; text-align: center;">
+                            <div style="font-size: 0.72rem; color: #64748b;">累計配息次數</div>
+                            <div id="div-stat-count" style="font-size: 1.1rem; font-weight: 700; color: #0f172a; margin-top: 0.2rem;">--</div>
+                        </div>
+                        <div class="div-stat-card" style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 0.6rem; text-align: center;">
+                            <div style="font-size: 0.72rem; color: #166534;">近 3 年平均現金股利</div>
+                            <div id="div-stat-avg3" style="font-size: 1.1rem; font-weight: 700; color: #15803d; margin-top: 0.2rem;">--</div>
+                        </div>
+                        <div class="div-stat-card" style="background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 8px; padding: 0.6rem; text-align: center;">
+                            <div style="font-size: 0.72rem; color: #4338ca;">近 5 年平均現金股利</div>
+                            <div id="div-stat-avg5" style="font-size: 1.1rem; font-weight: 700; color: #3730a3; margin-top: 0.2rem;">--</div>
+                        </div>
+                        <div class="div-stat-card" style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 0.6rem; text-align: center;">
+                            <div style="font-size: 0.72rem; color: #92400e;">最新除息交易日</div>
+                            <div id="div-stat-latest-ex" style="font-size: 0.95rem; font-weight: 700; color: #b45309; margin-top: 0.25rem;">--</div>
+                        </div>
+                    </div>
+
+                    <!-- 配息紀錄清單表格 -->
+                    <div class="table-container" style="max-height: 320px; overflow-y: auto;">
+                        <table class="history-table">
+                            <thead>
+                                <tr>
+                                    <th>所屬年度 / 季別</th>
+                                    <th>現金股利 (元)</th>
+                                    <th>股票股利 (股)</th>
+                                    <th>合計股利 (元)</th>
+                                    <th>除息交易日</th>
+                                    <th>現金股利發放日</th>
+                                    <th>董事會決議日</th>
+                                </tr>
+                            </thead>
+                            <tbody id="stock-dividend-tbody">
+                                <tr><td colspan="7" style="text-align: center; color: #64748b;">正在連線載入配息紀錄...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -873,6 +930,33 @@ CREATE INDEX IF NOT EXISTS idx_app_users_status ON app_users(status);
 ALTER TABLE app_users ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Public access on app_users" ON app_users;
 CREATE POLICY "Public access on app_users" ON app_users FOR ALL USING (true) WITH CHECK (true);</textarea>
+                    </div>
+
+                    <!-- 📋 Supabase stock_dividends 配息資料表建表 SQL 參考卡 -->
+                    <div class="admin-section-box" style="background: #f8fafc; border-color: #cbd5e1; margin-top: 0.75rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <h4 style="margin-bottom: 0;"><i class="fa-solid fa-hand-holding-dollar"></i> Supabase <code>stock_dividends</code> 歷年配息表指令</h4>
+                            <button type="button" class="secondary-btn" id="btn-copy-dividend-sql" style="padding: 0.25rem 0.65rem; font-size: 0.75rem; border-radius: 6px; cursor: pointer;">
+                                <i class="fa-solid fa-copy"></i> 複製 SQL
+                            </button>
+                        </div>
+                        <textarea id="sql-stock-dividends-code" readonly rows="4" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0.5rem; font-family: monospace; font-size: 0.75rem; background: #ffffff;">CREATE TABLE IF NOT EXISTS stock_dividends (
+    id TEXT PRIMARY KEY,
+    stock_id TEXT NOT NULL,
+    year TEXT NOT NULL,
+    cash_dividend NUMERIC NOT NULL DEFAULT 0,
+    stock_dividend NUMERIC NOT NULL DEFAULT 0,
+    total_dividend NUMERIC NOT NULL DEFAULT 0,
+    ex_dividend_date TEXT DEFAULT '',
+    payment_date TEXT DEFAULT '',
+    announcement_date TEXT DEFAULT '',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_stock_dividends_stock_id ON stock_dividends(stock_id);
+ALTER TABLE stock_dividends ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public access on stock_dividends" ON stock_dividends;
+CREATE POLICY "Public access on stock_dividends" ON stock_dividends FOR ALL USING (true) WITH CHECK (true);</textarea>
                     </div>
                 </div>
             </div>

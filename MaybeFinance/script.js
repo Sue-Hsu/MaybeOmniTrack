@@ -149,7 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnAiDiagnoseStock = document.getElementById('btn-ai-diagnose-stock');
     const btnSubmitAddStock = document.getElementById('btn-submit-add-stock');
 
-    // 股票圖表 Modal
+    // 股票圖表 Modal 與歷年配息視圖
     const stockChartModal = document.getElementById('stock-chart-modal');
     const btnCloseStockModal = document.getElementById('btn-close-stock-modal');
     const modalStockTitle = document.getElementById('modal-stock-title');
@@ -158,6 +158,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const rangeButtons = document.querySelectorAll('.btn-range');
     const btnTypeLine = document.getElementById('btn-type-line');
     const btnTypeCandle = document.getElementById('btn-type-candle');
+
+    const subtabBtnKline = document.getElementById('subtab-btn-kline');
+    const subtabBtnDividend = document.getElementById('subtab-btn-dividend');
+    const stockModalKlineView = document.getElementById('stock-modal-kline-view');
+    const stockModalDividendView = document.getElementById('stock-modal-dividend-view');
+    const dividendBadgeCount = document.getElementById('dividend-badge-count');
+    const stockDividendTbody = document.getElementById('stock-dividend-tbody');
+    const divStatCount = document.getElementById('div-stat-count');
+    const divStatAvg3 = document.getElementById('div-stat-avg3');
+    const divStatAvg5 = document.getElementById('div-stat-avg5');
+    const divStatLatestEx = document.getElementById('div-stat-latest-ex');
+    const btnCopyDividendSql = document.getElementById('btn-copy-dividend-sql');
 
     // 匯率與金價元素
     const fxUnauthView = document.getElementById('fx-unauth-view');
@@ -1447,6 +1459,42 @@ ${promptRules}
 
         btnCloseStockModal.addEventListener('click', () => stockChartModal.style.display = 'none');
 
+        // 股票 Modal 子頁籤切換 (走勢圖 vs 配息紀錄)
+        if (subtabBtnKline && subtabBtnDividend) {
+            subtabBtnKline.addEventListener('click', () => {
+                subtabBtnKline.classList.add('active');
+                subtabBtnDividend.classList.remove('active');
+                subtabBtnKline.style.background = '#eef2ff';
+                subtabBtnKline.style.color = '#4338ca';
+                subtabBtnDividend.style.background = 'transparent';
+                subtabBtnDividend.style.color = '#64748b';
+                if (stockModalKlineView) stockModalKlineView.style.display = 'block';
+                if (stockModalDividendView) stockModalDividendView.style.display = 'none';
+            });
+
+            subtabBtnDividend.addEventListener('click', () => {
+                subtabBtnDividend.classList.add('active');
+                subtabBtnKline.classList.remove('active');
+                subtabBtnDividend.style.background = '#eef2ff';
+                subtabBtnDividend.style.color = '#4338ca';
+                subtabBtnKline.style.background = 'transparent';
+                subtabBtnKline.style.color = '#64748b';
+                if (stockModalKlineView) stockModalKlineView.style.display = 'none';
+                if (stockModalDividendView) stockModalDividendView.style.display = 'block';
+            });
+        }
+
+        // 複製 stock_dividends 建表 SQL 按鈕
+        if (btnCopyDividendSql) {
+            btnCopyDividendSql.addEventListener('click', () => {
+                const sqlEl = document.getElementById('sql-stock-dividends-code');
+                if (sqlEl) {
+                    navigator.clipboard.writeText(sqlEl.value);
+                    alert("📋 已將 stock_dividends 歷年配息表建表 SQL 複製至剪貼簿！可直接至 Supabase SQL Editor 貼上執行。");
+                }
+            });
+        }
+
         // 一鍵同步所有股票今日最新現價
         const btnRefreshAllStocks = document.getElementById('btn-refresh-all-stocks');
         if (btnRefreshAllStocks) {
@@ -2294,14 +2342,28 @@ ${promptRules}
                 renderStocks();
             });
 
-            // 查看走勢圖按鈕
+            // 查看走勢圖與歷年配息按鈕
             const chartBtn = card.querySelector('.btn-view-chart');
             chartBtn.addEventListener('click', () => {
                 state.selectedStockForChart = stock;
-                modalStockTitle.textContent = `${stock.id} ${stock.name} - 歷史行情走勢`;
+                modalStockTitle.textContent = `${stock.id} ${stock.name} - 行情走勢與配息`;
                 modalStockPrice.textContent = `NT$ ${stock.price.toFixed(2)}`;
+
+                // 預設開啟 K 線走勢分頁
+                if (subtabBtnKline && subtabBtnDividend) {
+                    subtabBtnKline.classList.add('active');
+                    subtabBtnDividend.classList.remove('active');
+                    subtabBtnKline.style.background = '#eef2ff';
+                    subtabBtnKline.style.color = '#4338ca';
+                    subtabBtnDividend.style.background = 'transparent';
+                    subtabBtnDividend.style.color = '#64748b';
+                }
+                if (stockModalKlineView) stockModalKlineView.style.display = 'block';
+                if (stockModalDividendView) stockModalDividendView.style.display = 'none';
+
                 stockChartModal.style.display = 'flex';
                 renderStockChart(stock);
+                loadStockDividends(stock);
             });
 
             stocksContainer.appendChild(card);
@@ -2435,6 +2497,165 @@ ${promptRules}
                     interaction: { mode: 'index', intersect: false }
                 }
             });
+        }
+    }
+
+    // =========================================================================
+    // 11.5 股票歷年配息紀錄 (Supabase 優先查詢，未命中連線 FinMind 並自動入庫)
+    // =========================================================================
+    async function loadStockDividends(stock) {
+        if (!stock || !stock.id) return;
+        if (dividendBadgeCount) dividendBadgeCount.textContent = '載入中...';
+        if (stockDividendTbody) {
+            stockDividendTbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #64748b; padding: 1.5rem;"><i class="fa-solid fa-spinner fa-spin"></i> 正在連線查詢歷年與各季配息紀錄...</td></tr>';
+        }
+
+        const client = getSupabaseClient();
+        let dividendList = [];
+        let hitSupabase = false;
+
+        // 1. Supabase 快取優先查詢
+        if (client) {
+            try {
+                const { data: dbDividends, error } = await client
+                    .from('stock_dividends')
+                    .select('*')
+                    .eq('stock_id', stock.id)
+                    .order('announcement_date', { ascending: false });
+
+                if (dbDividends && !error && dbDividends.length > 0) {
+                    dividendList = dbDividends;
+                    hitSupabase = true;
+                    console.log(`⚡ [Supabase 命中] 成功從 Supabase 載入 ${stock.name} ${dividendList.length} 筆歷年配息紀錄！`);
+                }
+            } catch (e) {
+                console.warn("Supabase stock_dividends query error:", e);
+            }
+        }
+
+        // 2. 若 Supabase 無資料，連線 FinMind TaiwanStockDividend 抓取
+        if (!hitSupabase) {
+            try {
+                console.log(`🌐 [API 抓取] 正在從 FinMind 抓取 ${stock.name} (${stock.id}) 歷年配息...`);
+                const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockDividend&data_id=${stock.id}&start_date=2015-01-01`);
+                const json = await res.json();
+                if (json.msg === 'success' && json.data && json.data.length > 0) {
+                    // 依公告日期反向排序 (最新在最前)
+                    const rawSorted = json.data.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+                    
+                    dividendList = rawSorted.map(item => {
+                        const cash = parseFloat(item.CashEarningsDistribution || 0) + parseFloat(item.CashStatutorySurplus || 0);
+                        const stk = parseFloat(item.StockEarningsDistribution || 0) + parseFloat(item.StockStatutorySurplus || 0);
+                        const total = cash + stk;
+                        const exDate = item.CashExDividendTradingDate || item.StockExDividendTradingDate || '';
+                        const payDate = item.CashDividendPaymentDate || '';
+                        const yr = item.year || (item.date ? item.date.slice(0, 4) + '年' : '歷年');
+                        // 組合主鍵 ID: stock_id + year + ex_date/date
+                        const rowId = `${stock.id}_${item.date}_${yr}_${exDate || 'noex'}`.replace(/\s+/g, '_');
+
+                        return {
+                            id: rowId,
+                            stock_id: stock.id,
+                            year: yr,
+                            cash_dividend: parseFloat(cash.toFixed(4)),
+                            stock_dividend: parseFloat(stk.toFixed(4)),
+                            total_dividend: parseFloat(total.toFixed(4)),
+                            ex_dividend_date: exDate || '--',
+                            payment_date: payDate || '--',
+                            announcement_date: item.date || ''
+                        };
+                    });
+
+                    // 3. 自動整批入庫至 Supabase stock_dividends
+                    if (client && dividendList.length > 0) {
+                        try {
+                            const { error: upsertErr } = await client
+                                .from('stock_dividends')
+                                .upsert(dividendList, { onConflict: 'id' });
+                            
+                            if (!upsertErr) {
+                                console.log(`💾 [自動入庫] 成功將 ${stock.name} ${dividendList.length} 筆配息紀錄寫入 Supabase stock_dividends！`);
+                            } else {
+                                console.warn("Supabase batch upsert stock_dividends error:", upsertErr);
+                            }
+                        } catch (insE) {
+                            console.warn("Supabase stock_dividends upsert exception:", insE);
+                        }
+                    }
+                }
+            } catch (apiErr) {
+                console.error("FinMind dividend fetch error:", apiErr);
+            }
+        }
+
+        // 4. 渲染配息表格與統計指標
+        renderDividendUI(dividendList, stock);
+    }
+
+    function renderDividendUI(list, stock) {
+        if (dividendBadgeCount) dividendBadgeCount.textContent = `${list.length} 筆`;
+
+        if (!list || list.length === 0) {
+            if (stockDividendTbody) {
+                stockDividendTbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #94a3b8; padding: 2rem;">查無此標的近期配息紀錄。</td></tr>';
+            }
+            if (divStatCount) divStatCount.textContent = '0 次';
+            if (divStatAvg3) divStatAvg3.textContent = 'NT$ 0.00';
+            if (divStatAvg5) divStatAvg5.textContent = 'NT$ 0.00';
+            if (divStatLatestEx) divStatLatestEx.textContent = '--';
+            return;
+        }
+
+        // 計算累計與平均指標
+        const totalCount = list.length;
+        // 近 3 年 / 近 5 年現金股利平均 (按年度加總計算)
+        const yearCashMap = {};
+        list.forEach(item => {
+            const yKey = (item.year || '').slice(0, 4); // 擷取年份
+            if (yKey) {
+                yearCashMap[yKey] = (yearCashMap[yKey] || 0) + (parseFloat(item.cash_dividend) || 0);
+            }
+        });
+        const yearlyCashValues = Object.values(yearCashMap);
+        const avg3 = yearlyCashValues.length > 0 
+            ? (yearlyCashValues.slice(0, 3).reduce((a, b) => a + b, 0) / Math.min(3, yearlyCashValues.length)).toFixed(2) 
+            : '0.00';
+        const avg5 = yearlyCashValues.length > 0 
+            ? (yearlyCashValues.slice(0, 5).reduce((a, b) => a + b, 0) / Math.min(5, yearlyCashValues.length)).toFixed(2) 
+            : '0.00';
+
+        const latestItem = list[0];
+        const latestEx = (latestItem && latestItem.ex_dividend_date && latestItem.ex_dividend_date !== '--') 
+            ? latestItem.ex_dividend_date 
+            : (latestItem && latestItem.announcement_date) || '--';
+
+        if (divStatCount) divStatCount.textContent = `${totalCount} 次`;
+        if (divStatAvg3) divStatAvg3.textContent = `NT$ ${avg3}`;
+        if (divStatAvg5) divStatAvg5.textContent = `NT$ ${avg5}`;
+        if (divStatLatestEx) divStatLatestEx.textContent = latestEx;
+
+        if (stockDividendTbody) {
+            stockDividendTbody.innerHTML = list.map(item => {
+                const safeYear = escapeHtml(item.year || '--');
+                const safeCash = parseFloat(item.cash_dividend || 0).toFixed(2);
+                const safeStk = parseFloat(item.stock_dividend || 0).toFixed(2);
+                const safeTotal = parseFloat(item.total_dividend || 0).toFixed(2);
+                const safeEx = escapeHtml(item.ex_dividend_date || '--');
+                const safePay = escapeHtml(item.payment_date || '--');
+                const safeAnn = escapeHtml(item.announcement_date || '--');
+
+                return `
+                    <tr>
+                        <td><strong>${safeYear}</strong></td>
+                        <td style="color: #15803d; font-weight: 700;">NT$ ${safeCash}</td>
+                        <td style="color: #4338ca;">${safeStk} 股</td>
+                        <td style="color: #0f172a; font-weight: 700;">NT$ ${safeTotal}</td>
+                        <td>${safeEx}</td>
+                        <td><span style="color: #059669;">${safePay}</span></td>
+                        <td style="color: #64748b; font-size: 0.75rem;">${safeAnn}</td>
+                    </tr>
+                `;
+            }).join('');
         }
     }
 
