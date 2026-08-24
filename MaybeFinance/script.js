@@ -2832,7 +2832,7 @@ ${promptRules}
                 }
 
                 const payDateSubtext = payDateStr 
-                    ? `<div style="font-size: 0.73rem; color: #64748b; font-weight: normal; margin-top: 0.2rem; font-family: ui-monospace, monospace;">(發放${payDateStr})</div>` 
+                    ? `<div style="font-size: 0.73rem; color: #64748b; font-weight: normal; margin-top: 0.15rem; font-family: ui-monospace, monospace; white-space: nowrap;">(發放 ${payDateStr})</div>` 
                     : '';
 
                 const safeCash = parseFloat(item.cash_dividend || 0).toFixed(2);
@@ -2844,7 +2844,7 @@ ${promptRules}
 
                 return `
                     <tr>
-                        <td style="vertical-align: middle;">
+                        <td style="vertical-align: middle; white-space: nowrap;">
                             <div style="line-height: 1.25;">
                                 <strong style="font-size: 0.95rem; color: #0f172a;">${safeYear}</strong>
                                 ${payDateSubtext}
