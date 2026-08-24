@@ -391,6 +391,13 @@
 
             <!-- 股票篩選工具列 -->
             <section class="stocks-toolbar glass-panel">
+                <!-- 頂部資訊列：Gemini AI 調用額度 (位於全部標的上方) -->
+                <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 0.65rem;">
+                    <span class="badge-vault" id="gemini-quota-badge" style="cursor: pointer; font-size: 0.78rem; display: inline-flex; align-items: center; gap: 0.35rem; background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; border-radius: 8px; padding: 0.35rem 0.75rem;" title="點擊檢測 Gemini AI 今日調用量與官方免費額度">
+                        <i class="fa-solid fa-brain"></i> <span id="gemini-quota-text">Gemini 今日調用: 0 / 1,500 次 (剩餘 1,500 次)</span>
+                    </span>
+                </div>
+
                 <div class="filter-chips-group">
                     <button class="filter-chip active" data-filter="all">全部標的 (<span id="count-all">0</span>)</button>
                     <button class="filter-chip" data-filter="watchlist"><i class="fa-solid fa-star"></i> 我的自選 (<span id="count-fav">0</span>)</button>
@@ -405,17 +412,14 @@
                         <i class="fa-solid fa-magnifying-glass search-icon"></i>
                         <input type="text" id="stock-search-input" placeholder="搜尋股票代碼或名稱 (如 2886 兆豐金)...">
                     </div>
-                    <span class="badge-vault" id="gemini-quota-badge" style="cursor: pointer; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem; background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; border-radius: 8px; padding: 0.55rem 0.85rem;" title="點擊檢測 Gemini AI 今日調用量與官方免費額度">
-                        <i class="fa-solid fa-brain"></i> <span id="gemini-quota-text">Gemini 今日調用: 0 / 1,500 次</span>
-                    </span>
-                    <button class="secondary-btn" id="btn-refresh-all-stocks" style="white-space: nowrap; padding: 0.55rem 0.85rem; font-size: 0.85rem; border-radius: 8px; cursor: pointer;" title="一鍵同步所有股票最新收盤價">
-                        <i class="fa-solid fa-arrows-rotate"></i> 更新最新股價
+                    <button class="primary-btn" id="btn-open-add-stock-modal" style="white-space: nowrap; padding: 0.55rem 1rem; font-size: 0.85rem;">
+                        <i class="fa-solid fa-plus"></i> 新增股票
                     </button>
                     <button class="primary-btn" id="btn-open-batch-stock-modal" style="white-space: nowrap; padding: 0.55rem 0.95rem; font-size: 0.85rem; background: linear-gradient(135deg, #6366f1, #4f46e5);" title="一次匯入多檔股票並由 AI 批次健檢">
                         <i class="fa-solid fa-layer-group"></i> 批次匯入
                     </button>
-                    <button class="primary-btn" id="btn-open-add-stock-modal" style="white-space: nowrap; padding: 0.55rem 1rem; font-size: 0.85rem;">
-                        <i class="fa-solid fa-plus"></i> 新增股票
+                    <button class="secondary-btn" id="btn-refresh-all-stocks" style="white-space: nowrap; padding: 0.55rem 0.85rem; font-size: 0.85rem; border-radius: 8px; cursor: pointer;" title="一鍵同步所有股票最新收盤價">
+                        <i class="fa-solid fa-arrows-rotate"></i> 更新最新股價
                     </button>
                 </div>
             </section>
