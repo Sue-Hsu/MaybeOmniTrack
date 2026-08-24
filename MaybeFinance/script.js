@@ -127,6 +127,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const rulesToggleBtn = document.getElementById('rules-toggle-btn');
     const rulesBodyContent = document.getElementById('rules-body-content');
     const rulesToggleIcon = document.getElementById('rules-toggle-icon');
+    const formulasToggleBtn = document.getElementById('formulas-toggle-btn');
+    const formulasBodyContent = document.getElementById('formulas-body-content');
+    const formulasToggleIcon = document.getElementById('formulas-toggle-icon');
     const stocksContainer = document.getElementById('stocks-container');
     const stockSearchInput = document.getElementById('stock-search-input');
     const filterChips = document.querySelectorAll('.filter-chip');
@@ -1443,6 +1446,14 @@ ${promptRules}
             rulesToggleIcon.classList.toggle('rotate', isHidden);
         });
 
+        if (formulasToggleBtn && formulasBodyContent && formulasToggleIcon) {
+            formulasToggleBtn.addEventListener('click', () => {
+                const isHidden = formulasBodyContent.style.display === 'none';
+                formulasBodyContent.style.display = isHidden ? 'block' : 'none';
+                formulasToggleIcon.classList.toggle('rotate', isHidden);
+            });
+        }
+
         filterChips.forEach(chip => {
             chip.addEventListener('click', () => {
                 filterChips.forEach(c => c.classList.remove('active'));
@@ -2654,6 +2665,11 @@ ${promptRules}
         if (stockDividendTbody) {
             stockDividendTbody.innerHTML = list.map(item => {
                 const safeYear = escapeHtml(item.year || '--');
+                const payYear = (item.payment_date && item.payment_date !== '--') 
+                    ? item.payment_date.slice(0, 4) 
+                    : ((item.ex_dividend_date && item.ex_dividend_date !== '--') ? item.ex_dividend_date.slice(0, 4) : '');
+                const payYearBadge = payYear ? `<span style="font-size: 0.72rem; color: #64748b; font-weight: normal; margin-left: 0.25rem;">(${payYear}發放)</span>` : '';
+
                 const safeCash = parseFloat(item.cash_dividend || 0).toFixed(2);
                 const safeStk = parseFloat(item.stock_dividend || 0).toFixed(2);
                 const safeTotal = parseFloat(item.total_dividend || 0).toFixed(2);
@@ -2663,7 +2679,7 @@ ${promptRules}
 
                 return `
                     <tr>
-                        <td><strong>${safeYear}</strong></td>
+                        <td><strong>${safeYear}</strong>${payYearBadge}</td>
                         <td style="color: #15803d; font-weight: 700;">NT$ ${safeCash}</td>
                         <td style="color: #4338ca;">${safeStk} 股</td>
                         <td style="color: #0f172a; font-weight: 700;">NT$ ${safeTotal}</td>
