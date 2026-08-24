@@ -1,0 +1,26 @@
+# 專案自訂排除
+選股參考/
+GEMINI.md
+docs/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Node / Environment
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+*.log
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
