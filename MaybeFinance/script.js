@@ -2123,11 +2123,53 @@ ${promptRules}
                     let calculatedYield = stock.yield;
                     if (client) {
                         try {
-                            const { data: divRows } = await client
+                            let { data: divRows } = await client
                                 .from('stock_dividends')
-                                .select('cash_dividend, year, announcement_date')
+                                .select('cash_dividend, stock_dividend, total_dividend, ex_dividend_date, payment_date, announcement_date, year')
                                 .eq('stock_id', stock.id)
                                 .order('announcement_date', { ascending: false });
+
+                            // 若 Supabase stock_dividends 尚無快取資料，主動向 FinMind 抓取並自動整批入庫
+                            if (!divRows || divRows.length === 0) {
+                                try {
+                                    const divRes = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockDividend&data_id=${stock.id}&start_date=2015-01-01`);
+                                    const divJson = await divRes.json();
+                                    if (divJson.msg === 'success' && divJson.data && divJson.data.length > 0) {
+                                        const rawSorted = divJson.data.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+                                        let mappedList = rawSorted.map(item => {
+                                            const cash = parseFloat(item.CashEarningsDistribution || 0) + parseFloat(item.CashStatutorySurplus || 0);
+                                            const stk = parseFloat(item.StockEarningsDistribution || 0) + parseFloat(item.StockStatutorySurplus || 0);
+                                            const total = cash + stk;
+                                            const exDate = item.CashExDividendTradingDate || item.StockExDividendTradingDate || '';
+                                            const payDate = item.CashDividendPaymentDate || '';
+                                            const rawYr = item.year || (item.date ? item.date.slice(0, 4) + '年' : '歷年');
+                                            const yr = formatDividendYear(rawYr, payDate, exDate);
+                                            const rowId = `${stock.id}_${item.date}_${yr}_${exDate || 'noex'}`.replace(/\s+/g, '_');
+                                            return {
+                                                id: rowId,
+                                                stock_id: stock.id,
+                                                year: yr,
+                                                cash_dividend: parseFloat(cash.toFixed(4)),
+                                                stock_dividend: parseFloat(stk.toFixed(4)),
+                                                total_dividend: parseFloat(total.toFixed(4)),
+                                                ex_dividend_date: exDate || '--',
+                                                payment_date: payDate || '--',
+                                                announcement_date: item.date || ''
+                                            };
+                                        });
+                                        mappedList = enrichDividendList(mappedList);
+                                        mappedList.forEach(item => {
+                                            if (item.formatted_period) item.year = item.formatted_period;
+                                        });
+                                        await client.from('stock_dividends').upsert(mappedList, { onConflict: 'id' });
+                                        divRows = mappedList;
+                                        console.log(`💾 [自動入庫] 批量股價更新已成功為 ${stock.name} 寫入 ${mappedList.length} 筆配息至 Supabase stock_dividends！`);
+                                    }
+                                } catch (divFetchErr) {
+                                    console.warn(`FinMind dividend auto-sync for ${stock.id} error:`, divFetchErr);
+                                }
+                            }
+
                             if (divRows && divRows.length > 0 && stock.price > 0) {
                                 const annualCash = calculateAnnualCashDividend(divRows);
                                 if (annualCash > 0) {
