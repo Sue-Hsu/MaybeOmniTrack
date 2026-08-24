@@ -473,28 +473,70 @@ input:focus, select:focus {
 
 .gold-current-prices {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 1.25rem;
-    margin-bottom: 1.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.25rem;
 }
 
 .gold-price-card {
     background: linear-gradient(135deg, #fffbeb, #fef3c7);
     border: 1px solid #fde68a;
     border-radius: 12px;
-    padding: 1.25rem;
+    padding: 1.15rem;
     text-align: center;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.gold-price-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.05);
 }
 
 .twd-card { background: linear-gradient(135deg, #f0fdf4, #dcfce7); border-color: #bbf7d0; }
-.gold-price-title { font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.4rem; }
-.gold-price-value { font-size: 2rem; font-weight: 800; color: #b45309; }
+.tsin-card { background: linear-gradient(135deg, #fffbeb, #fef3c7); border-color: #fde68a; }
+.gold-price-title { font-size: 0.85rem; font-weight: 700; color: var(--text-muted); margin-bottom: 0.4rem; }
+.gold-price-value { font-size: 1.85rem; font-weight: 800; color: #b45309; }
 .twd-card .gold-price-value { color: #15803d; }
-.gold-price-note { font-size: 0.75rem; color: #92400e; margin-top: 0.4rem; opacity: 0.8; }
+.tsin-card .gold-price-value { color: #b45309; }
+.gold-price-note { font-size: 0.72rem; color: #92400e; margin-top: 0.4rem; opacity: 0.85; }
 .twd-card .gold-price-note { color: #166534; }
+.tsin-card .gold-price-note { color: #92400e; }
 .gold-btn { background: #f59e0b; }
 .gold-btn:hover { background: #d97706; }
-.gold-search-bar { background: #fffbeb; border-color: #fef3c7; margin-bottom: 1.25rem; }
+
+.gold-chart-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+}
+
+.btn-gold-mode {
+    background: transparent;
+    border: none;
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+
+.btn-gold-mode:hover {
+    color: var(--text-main);
+}
+
+.btn-gold-mode.active {
+    background: #ffffff;
+    color: #b45309;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    font-weight: 700;
+}
+
+.gold-search-bar { background: #fffbeb; border-color: #fef3c7; margin-bottom: 0; }
 
 /* ========================================== */
 /* 板塊二：股票存股健檢與篩選器樣式           */

@@ -18,6 +18,8 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedStockForChart: null,
         chartRange: 90,
         chartType: 'line',
+        goldViewMode: 'twd', // 'twd' (台灣金價 NT$/g) | 'tsin' (銀樓 NT$/錢) | 'usd' (國際金價 USD/oz) | 'dual' (雙軸)
+        cachedGoldList: [],
         
         // 系統設定 (Firebase 保險庫與 Google 後台管理)
         config: {
@@ -27,7 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
             supabaseKey: '',
             goldApiKey: '',
             geminiApiKey: '', // Google Studio AI (Gemini Flash) API Key
-            geminiModel: 'gemini-3.6-flash', // 選定的 Gemini 模型
+            geminiModel: 'gemini-3.7-flash', // 選定的 Gemini 模型
             geminiPrompt: '', // 自訂存股健檢法則與提示詞
             googleClientId: '432499293288-35d73h2vaf2q5u1kv816d7m15h3utmdr.apps.googleusercontent.com',
             adminGoogleEmails: '', // 指定管理員 Gmail 清單
@@ -173,6 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const goldUsdPrice = document.getElementById('gold-usd-price');
     const goldTwdPrice = document.getElementById('gold-twd-price');
+    const goldTsinPrice = document.getElementById('gold-tsin-price');
     const goldStartDateInput = document.getElementById('gold-start-date');
     const goldEndDateInput = document.getElementById('gold-end-date');
     const goldSearchBtn = document.getElementById('gold-search-btn');
@@ -1992,12 +1995,15 @@ ${promptRules}
         searchBtn.addEventListener('click', () => fetchFxHistory(startDateInput.value, endDateInput.value));
         goldSearchBtn.addEventListener('click', () => fetchGoldHistory(goldStartDateInput.value, goldEndDateInput.value));
 
-        // GoldAPI 剩餘次數查詢事件
-        const quotaBadge = document.getElementById('gold-quota-badge');
-        if (quotaBadge) quotaBadge.addEventListener('click', () => checkGoldApiQuota(true));
-        
-        const btnCheckGoldQuota = document.getElementById('btn-check-gold-quota');
-        if (btnCheckGoldQuota) btnCheckGoldQuota.addEventListener('click', () => checkGoldApiQuota(true));
+        // 黃金幣別與單位視圖切換 (台灣公克、銀樓每錢、國際盎司、雙軸對照)
+        document.querySelectorAll('.btn-gold-mode').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.btn-gold-mode').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                state.goldViewMode = btn.dataset.mode || 'twd';
+                renderGoldChart(state.cachedGoldList);
+            });
+        });
 
         // 若已登入則由 renderAppAuthGates 自動調用 API 載入數據
     }
@@ -2318,33 +2324,132 @@ ${promptRules}
         list = Array.from(existingMap.values()).sort((a, b) => a.date.localeCompare(b.date));
         if (list.length === 0) list = generateMockGold(start, end);
 
-        goldUsdPrice.textContent = list.length > 0 ? list[list.length - 1].usd.toFixed(2) : "2,385.60";
-        goldTwdPrice.textContent = list.length > 0 ? list[list.length - 1].twd.toFixed(2) : "2,492.30";
+        state.cachedGoldList = list;
 
-        if (goldChartInstance) goldChartInstance.destroy();
-        goldChartInstance = new Chart(goldChartCtx, {
-            type: 'line',
-            data: {
-                labels: list.map(d => d.date),
-                datasets: [
-                    { label: '國際金價 (USD/oz)', data: list.map(d => d.usd), borderColor: '#b45309', backgroundColor: 'rgba(217, 119, 6, 0.08)', borderWidth: 2, tension: 0.2, yAxisID: 'y1' },
-                    { label: '台灣金價 (TWD/g)', data: list.map(d => d.twd), borderColor: '#15803d', backgroundColor: 'rgba(21, 128, 61, 0.08)', borderWidth: 2, tension: 0.2, yAxisID: 'y2' }
-                ]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
-                scales: {
-                    y1: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'USD/oz' } },
-                    y2: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'TWD/g' }, grid: { drawOnChartArea: false } }
-                }
-            }
-        });
+        const lastItem = list.length > 0 ? list[list.length - 1] : { usd: 2385.60, twd: 2492.30 };
+        goldUsdPrice.textContent = lastItem.usd.toFixed(2);
+        goldTwdPrice.textContent = lastItem.twd.toFixed(2);
+        if (goldTsinPrice) goldTsinPrice.textContent = (lastItem.twd * 3.75).toFixed(1);
+
+        renderGoldChart(list);
 
         goldTbody.innerHTML = '';
         [...list].reverse().forEach(item => {
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td>${item.date}</td><td>$${item.usd.toFixed(2)}</td><td>NT$${item.twd.toFixed(2)}</td>`;
+            const tsinVal = (item.twd * 3.75).toFixed(1);
+            tr.innerHTML = `
+                <td><strong>${item.date}</strong></td>
+                <td style="color: #166534; font-weight: 700;">NT$${item.twd.toFixed(2)}</td>
+                <td style="color: #b45309; font-weight: 700;">NT$${tsinVal}</td>
+                <td style="color: #2563eb;">$${item.usd.toFixed(2)}</td>
+            `;
             goldTbody.appendChild(tr);
+        });
+    }
+
+    // 依選定模式繪製金價走勢圖 (單軸直覺 vs 雙軸對照)
+    function renderGoldChart(list) {
+        if (!list || list.length === 0) return;
+        if (goldChartInstance) goldChartInstance.destroy();
+
+        const labels = list.map(d => d.date);
+        let datasets = [];
+        let scales = {};
+
+        if (state.goldViewMode === 'twd') {
+            // 1. 預設：台灣金價 (NT$/公克) - 單一清晰 Y 軸
+            datasets = [{
+                label: '🇹🇼 台灣金價 (NT$/公克)',
+                data: list.map(d => d.twd),
+                borderColor: '#16a34a',
+                backgroundColor: 'rgba(22, 163, 74, 0.1)',
+                borderWidth: 2.5,
+                tension: 0.25,
+                fill: true,
+                pointRadius: labels.length > 30 ? 0 : 3
+            }];
+            scales = {
+                y: {
+                    title: { display: true, text: '新台幣 / 公克 (NT$/g)' },
+                    ticks: { callback: v => 'NT$' + v }
+                }
+            };
+        } else if (state.goldViewMode === 'tsin') {
+            // 2. 台灣銀樓 (NT$/每錢，約3.75公克) - 單一清晰 Y 軸
+            datasets = [{
+                label: '🏪 台灣銀樓 (NT$/每錢，約3.75公克)',
+                data: list.map(d => parseFloat((d.twd * 3.75).toFixed(1))),
+                borderColor: '#d97706',
+                backgroundColor: 'rgba(217, 119, 6, 0.1)',
+                borderWidth: 2.5,
+                tension: 0.25,
+                fill: true,
+                pointRadius: labels.length > 30 ? 0 : 3
+            }];
+            scales = {
+                y: {
+                    title: { display: true, text: '新台幣 / 台錢 (NT$/錢)' },
+                    ticks: { callback: v => 'NT$' + v.toLocaleString() }
+                }
+            };
+        } else if (state.goldViewMode === 'usd') {
+            // 3. 國際金價 (USD/盎司) - 單一清晰 Y 軸
+            datasets = [{
+                label: '🌐 國際金價 (USD/盎司)',
+                data: list.map(d => d.usd),
+                borderColor: '#2563eb',
+                backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                borderWidth: 2.5,
+                tension: 0.25,
+                fill: true,
+                pointRadius: labels.length > 30 ? 0 : 3
+            }];
+            scales = {
+                y: {
+                    title: { display: true, text: '美元 / 盎司 (USD/oz)' },
+                    ticks: { callback: v => '$' + v }
+                }
+            };
+        } else {
+            // 4. 雙幣別對照 (獨立雙 Y 軸)
+            datasets = [
+                {
+                    label: '🌐 國際金價 (USD/oz - 左軸)',
+                    data: list.map(d => d.usd),
+                    borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37, 99, 235, 0.05)',
+                    borderWidth: 2,
+                    tension: 0.2,
+                    yAxisID: 'y1'
+                },
+                {
+                    label: '🇹🇼 台灣金價 (NT$/g - 右軸)',
+                    data: list.map(d => d.twd),
+                    borderColor: '#16a34a',
+                    backgroundColor: 'rgba(22, 163, 74, 0.05)',
+                    borderWidth: 2,
+                    tension: 0.2,
+                    yAxisID: 'y2'
+                }
+            ];
+            scales = {
+                y1: { type: 'linear', display: true, position: 'left', title: { display: true, text: '國際金價 (USD/oz)' } },
+                y2: { type: 'linear', display: true, position: 'right', title: { display: true, text: '台灣金價 (TWD/g)' }, grid: { drawOnChartArea: false } }
+            };
+        }
+
+        goldChartInstance = new Chart(goldChartCtx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                scales: scales
+            }
         });
     }
 

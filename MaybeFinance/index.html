@@ -253,30 +253,46 @@
                         </div>
 
                         <div id="gold-content">
+                            <!-- 即時牌告卡片 (台灣公克、銀樓每錢、國際盎司) -->
                             <div class="gold-current-prices">
-                                <div class="gold-price-card usd-card">
-                                    <div class="gold-price-title">國際金價 (美元/盎司)</div>
-                                    <div class="gold-price-value">$<span id="gold-usd-price">--</span></div>
-                                    <div class="gold-price-note">全世界通用的黃金報價單位</div>
+                                <div class="gold-price-card twd-card" style="border: 2px solid #16a34a; background: linear-gradient(135deg, rgba(240, 253, 244, 0.95), rgba(220, 252, 231, 0.7));">
+                                    <div class="gold-price-title" style="color: #15803d; font-weight: 700;">🇹🇼 台灣金價 (台幣/公克)</div>
+                                    <div class="gold-price-value" style="color: #166534;">NT$<span id="gold-twd-price">--</span></div>
+                                    <div class="gold-price-note">台灣銀行黃金存摺與常用公制報價 (1克)</div>
                                 </div>
-                                <div class="gold-price-card twd-card">
-                                    <div class="gold-price-title">台灣金價 (台幣/公克)</div>
-                                    <div class="gold-price-value">NT$<span id="gold-twd-price">--</span></div>
-                                    <div class="gold-price-note">台灣銀樓與銀行常用的單位 (1盎司 ≈ 31.1公克)</div>
+                                <div class="gold-price-card tsin-card" style="border: 2px solid #d97706; background: linear-gradient(135deg, rgba(254, 243, 199, 0.95), rgba(253, 230, 138, 0.7));">
+                                    <div class="gold-price-title" style="color: #b45309; font-weight: 700;">🏪 台灣銀樓 (台幣/每錢)</div>
+                                    <div class="gold-price-value" style="color: #92400e;">NT$<span id="gold-tsin-price">--</span></div>
+                                    <div class="gold-price-note">台灣銀樓飾金傳統計價單位 (1台錢 = 3.75公克)</div>
+                                </div>
+                                <div class="gold-price-card usd-card">
+                                    <div class="gold-price-title">🌐 國際金價 (美元/盎司)</div>
+                                    <div class="gold-price-value">$<span id="gold-usd-price">--</span></div>
+                                    <div class="gold-price-note">全球通用基準 (1金衡盎司 ≈ 31.1035公克)</div>
                                 </div>
                             </div>
 
-                            <div class="search-bar gold-search-bar">
-                                <div class="date-group">
-                                    <label for="gold-start-date">開始日期</label>
-                                    <input type="date" id="gold-start-date">
+                            <!-- 圖表工具列：視圖切換與日期篩選 -->
+                            <div class="gold-chart-toolbar">
+                                <div class="btn-group-range">
+                                    <button type="button" class="btn-gold-mode active" data-mode="twd">🇹🇼 台灣金價 (TWD/g)</button>
+                                    <button type="button" class="btn-gold-mode" data-mode="tsin">🏪 台灣金價 (TWD/錢)</button>
+                                    <button type="button" class="btn-gold-mode" data-mode="usd">🌐 國際金價 (USD/oz)</button>
+                                    <button type="button" class="btn-gold-mode" data-mode="dual">📊 雙幣別對照</button>
                                 </div>
-                                <span class="date-separator">至</span>
-                                <div class="date-group">
-                                    <label for="gold-end-date">結束日期</label>
-                                    <input type="date" id="gold-end-date">
+
+                                <div class="search-bar gold-search-bar" style="margin-bottom: 0;">
+                                    <div class="date-group">
+                                        <label for="gold-start-date">開始日期</label>
+                                        <input type="date" id="gold-start-date">
+                                    </div>
+                                    <span class="date-separator">至</span>
+                                    <div class="date-group">
+                                        <label for="gold-end-date">結束日期</label>
+                                        <input type="date" id="gold-end-date">
+                                    </div>
+                                    <button id="gold-search-btn" class="primary-btn gold-btn"><i class="fa-solid fa-magnifying-glass"></i> 查詢金價</button>
                                 </div>
-                                <button id="gold-search-btn" class="primary-btn gold-btn"><i class="fa-solid fa-magnifying-glass"></i> 查詢金價</button>
                             </div>
 
                             <div class="chart-container">
@@ -288,8 +304,9 @@
                                     <thead>
                                         <tr>
                                             <th>日期</th>
-                                            <th>美元/盎司 (USD/oz)</th>
-                                            <th>台幣/公克 (TWD/g)</th>
+                                            <th>台灣金價 (NT$/公克)</th>
+                                            <th>台灣銀樓 (NT$/每錢)</th>
+                                            <th>國際金價 (USD/盎司)</th>
                                         </tr>
                                     </thead>
                                     <tbody id="gold-tbody">
