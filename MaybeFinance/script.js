@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const state = {
         currentUser: null, // { name: '', email: '', role: 'admin' | 'user' }
-        activeTab: 'view-fx',
+        activeTab: 'view-stocks',
         currentFilter: 'all',
         searchTerm: '',
         watchlist: new Set(), // 預設自選為空

@@ -32,16 +32,16 @@
                 <p class="tagline">智能資產儀表板：外幣匯率・黃金牌告・AI 存股健檢</p>
             </div>
 
-            <!-- 主分頁導覽 (三個獨立頁籤) -->
+            <!-- 主分頁導覽 (三個獨立頁籤：股票 ➔ 黃金 ➔ 匯率) -->
             <nav class="nav-tabs">
-                <button class="nav-tab active" id="tab-fx" data-target="view-fx">
-                    <i class="fa-solid fa-money-bill-transfer"></i> 外幣匯率
+                <button class="nav-tab active" id="tab-stocks" data-target="view-stocks">
+                    <i class="fa-solid fa-arrow-trend-up"></i> 存股健檢與篩選
                 </button>
                 <button class="nav-tab" id="tab-gold" data-target="view-gold">
                     <i class="fa-solid fa-coins"></i> 黃金牌告
                 </button>
-                <button class="nav-tab" id="tab-stocks" data-target="view-stocks">
-                    <i class="fa-solid fa-arrow-trend-up"></i> 存股健檢與篩選
+                <button class="nav-tab" id="tab-fx" data-target="view-fx">
+                    <i class="fa-solid fa-money-bill-transfer"></i> 外幣匯率
                 </button>
             </nav>
 
@@ -71,9 +71,216 @@
 
     <div class="app-container">
         <!-- ========================================== -->
-        <!-- 板塊一：外幣匯率 (View 1)                   -->
+        <!-- 板塊一：股票存股健檢與篩選器 (View 1 - 預設顯示) -->
         <!-- ========================================== -->
-        <div class="tab-view active" id="view-fx">
+        <div class="tab-view active" id="view-stocks">
+            <!-- 存股 5 大維度速查卡 (Collapsible) -->
+            <section class="rules-summary-section glass-panel">
+                <div class="rules-header" id="rules-toggle-btn">
+                    <div class="rules-title">
+                        <h2><i class="fa-solid fa-book-bookmark"></i> 4 本經典名著：存股 5 大維度核心清單速查</h2>
+                        <span class="rules-subtitle">（點擊展開/收合指標詳情）</span>
+                    </div>
+                    <i class="fa-solid fa-chevron-down toggle-icon" id="rules-toggle-icon"></i>
+                </div>
+                
+                <div class="rules-body" id="rules-body-content" style="display: none;">
+                    <div class="rules-grid">
+                        <div class="rule-card">
+                            <div class="rule-card-title"><i class="fa-solid fa-shield"></i> 1. 規模與護城河</div>
+                            <ul>
+                                <li>股本 > 300 億（大型股不易被主力炒作）</li>
+                                <li>產業龍頭或具備官股背景（不倒翁神盾）</li>
+                                <li>產業分散（金融、電信、民生、ETF）</li>
+                            </ul>
+                        </div>
+                        <div class="rule-card">
+                            <div class="rule-card-title"><i class="fa-solid fa-hand-holding-dollar"></i> 2. 獲利體質</div>
+                            <ul>
+                                <li>連續 5~10 年獲利穩定無虧損</li>
+                                <li>近 5 年平均 EPS > 1 元且無衰退</li>
+                                <li>每月公布自結 EPS 更佳（資訊透明）</li>
+                            </ul>
+                        </div>
+                        <div class="rule-card">
+                            <div class="rule-card-title"><i class="fa-solid fa-money-bill-trend-up"></i> 3. 配息政策與現金流</div>
+                            <ul>
+                                <li>連續 10 年以上配發股利不中斷</li>
+                                <li>每年配息落差小（避開景氣循環股）</li>
+                                <li>盈餘分配率 ≥ 70%（公司大方分紅）</li>
+                            </ul>
+                        </div>
+                        <div class="rule-card">
+                            <div class="rule-card-title"><i class="fa-solid fa-bed"></i> 4. 波動與安定感</div>
+                            <ul>
+                                <li>Beta 值 < 0.8（最好 < 0.6 牛皮股）</li>
+                                <li>大跌時抗跌、不隨大盤暴起暴跌</li>
+                                <li>安心睡覺、不需天天焦慮盯盤</li>
+                            </ul>
+                        </div>
+                        <div class="rule-card">
+                            <div class="rule-card-title"><i class="fa-solid fa-tag"></i> 5. 估價與買進時機</div>
+                            <ul>
+                                <li>現金殖利率 ≥ 5% 為好買點（<5% 暫緩）</li>
+                                <li>股價淨值比 PB < 2.5（不買昂貴股）</li>
+                                <li>低本益比 PE（物美價廉才出手）</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 股票篩選工具列 -->
+            <section class="stocks-toolbar glass-panel">
+                <!-- 頂部資訊列：Gemini AI 調用額度 (位於全部標的上方) -->
+                <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 0.65rem;">
+                    <span class="badge-vault" id="gemini-quota-badge" style="cursor: pointer; font-size: 0.78rem; display: inline-flex; align-items: center; gap: 0.35rem; background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; border-radius: 8px; padding: 0.35rem 0.75rem;" title="點擊檢測 Gemini AI 今日調用量與官方免費額度">
+                        <i class="fa-solid fa-brain"></i> <span id="gemini-quota-text">Gemini 今日調用: 0 / 1,500 次 (剩餘 1,500 次)</span>
+                    </span>
+                </div>
+
+                <div class="filter-chips-group">
+                    <button class="filter-chip active" data-filter="all">全部標的 (<span id="count-all">0</span>)</button>
+                    <button class="filter-chip" data-filter="watchlist"><i class="fa-solid fa-star"></i> 我的自選 (<span id="count-fav">0</span>)</button>
+                    <button class="filter-chip chip-dividend" data-filter="dividend"><i class="fa-solid fa-crown"></i> 🏆 適合穩健存股</button>
+                    <button class="filter-chip chip-cashflow" data-filter="cashflow"><i class="fa-solid fa-money-bill-wave"></i> 💰 適合領高利息</button>
+                    <button class="filter-chip chip-swing" data-filter="swing"><i class="fa-solid fa-bolt"></i> 🚀 適合波段賺價差</button>
+                    <button class="filter-chip" data-filter="high-pass"><i class="fa-solid fa-circle-check"></i> 8項以上達標</button>
+                </div>
+                
+                <div class="search-stock-box" style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                    <div style="position: relative; flex: 1; min-width: 200px;">
+                        <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                        <input type="text" id="stock-search-input" placeholder="搜尋股票代碼或名稱 (如 2886 兆豐金)...">
+                    </div>
+                    <button class="primary-btn" id="btn-open-add-stock-modal" style="white-space: nowrap; padding: 0.55rem 1rem; font-size: 0.85rem;">
+                        <i class="fa-solid fa-plus"></i> 新增股票
+                    </button>
+                    <button class="primary-btn" id="btn-open-batch-stock-modal" style="white-space: nowrap; padding: 0.55rem 0.95rem; font-size: 0.85rem; background: linear-gradient(135deg, #6366f1, #4f46e5);" title="一次匯入多檔股票並由 AI 批次健檢">
+                        <i class="fa-solid fa-layer-group"></i> 批次匯入
+                    </button>
+                    <button class="secondary-btn" id="btn-refresh-all-stocks" style="white-space: nowrap; padding: 0.55rem 0.85rem; font-size: 0.85rem; border-radius: 8px; cursor: pointer;" title="一鍵同步所有股票最新收盤價">
+                        <i class="fa-solid fa-arrows-rotate"></i> 更新最新股價
+                    </button>
+                </div>
+            </section>
+
+            <!-- 股票健檢卡片網格清單 -->
+            <section class="stocks-grid" id="stocks-container">
+                <!-- 由 JS 動態渲染股票健檢卡片 -->
+            </section>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- 板塊二：黃金牌告與走勢 (View 2)            -->
+        <!-- ========================================== -->
+        <div class="tab-view" id="view-gold" style="display: none;">
+            <!-- 訪客未登入鎖定提示 -->
+            <div id="gold-unauth-view" class="unauth-gate-card" style="display: none;">
+                <i class="fa-solid fa-lock" style="font-size: 3rem; margin-bottom: 1rem; color: #f59e0b;"></i>
+                <h3 style="margin-bottom: 0.5rem; color: #1e293b;">請先登入以解鎖黃金牌告與即時金價走勢</h3>
+                <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 1.5rem;">登入後即可查看國際金價 (USD/oz) 與台灣金價 (TWD/g) 最新報價、走勢圖表與試算。</p>
+                <button class="primary-btn btn-gate-login" style="padding: 0.75rem 1.75rem; font-size: 0.95rem; margin: 0 auto; display: inline-flex; background: #f59e0b;">
+                    <i class="fa-solid fa-right-to-bracket"></i> 立即登入 / 申請審核
+                </button>
+            </div>
+
+            <!-- 已登入黃金內容 -->
+            <div id="gold-auth-view">
+                <!-- 黃金牌告與走勢區塊 -->
+                <section class="gold-section">
+                    <div class="glass-panel gold-panel">
+                        <div class="gold-header">
+                            <h2><i class="fa-solid fa-coins gold-icon"></i> 黃金即時金價與歷史走勢</h2>
+                            <div class="api-key-container">
+                                <span class="badge-vault" id="gold-quota-badge" style="cursor: pointer; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="點擊查詢本月剩餘次數">
+                                    <i class="fa-solid fa-gauge-high"></i> <span id="gold-quota-text">查詢 GoldAPI 剩餘額度</span>
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="loading-spinner" id="gold-loading" style="display: none;">
+                            <i class="fa-solid fa-circle-notch fa-spin"></i> 金價讀取中...
+                        </div>
+
+                        <div id="gold-content">
+                            <!-- 即時牌告卡片 (台灣公克、銀樓每錢、國際盎司) -->
+                            <div class="gold-current-prices">
+                                <div class="gold-price-card twd-card" style="border: 2px solid #16a34a; background: linear-gradient(135deg, rgba(240, 253, 244, 0.95), rgba(220, 252, 231, 0.7));">
+                                    <div class="gold-price-title" style="color: #15803d; font-weight: 700;">🇹🇼 台灣金價 (台幣/公克)</div>
+                                    <div class="gold-price-value" style="color: #166534;">NT$<span id="gold-twd-price">--</span></div>
+                                    <div class="gold-price-note">台灣銀行黃金存摺與常用公制報價 (1克)</div>
+                                </div>
+                                <div class="gold-price-card tsin-card" style="border: 2px solid #d97706; background: linear-gradient(135deg, rgba(254, 243, 199, 0.95), rgba(253, 230, 138, 0.7));">
+                                    <div class="gold-price-title" style="color: #b45309; font-weight: 700;">🏪 台灣銀樓 (台幣/每錢)</div>
+                                    <div class="gold-price-value" style="color: #92400e;">NT$<span id="gold-tsin-price">--</span></div>
+                                    <div class="gold-price-note">台灣銀樓飾金傳統計價單位 (1台錢 = 3.75公克)</div>
+                                </div>
+                                <div class="gold-price-card usd-card">
+                                    <div class="gold-price-title">🌐 國際金價 (美元/盎司)</div>
+                                    <div class="gold-price-value">$<span id="gold-usd-price">--</span></div>
+                                    <div class="gold-price-note">全球通用基準 (1金衡盎司 ≈ 31.1035公克)</div>
+                                </div>
+                            </div>
+
+                            <!-- 換算知識白話解說 -->
+                            <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 0.65rem 1rem; margin-bottom: 1rem; font-size: 0.8rem; color: #92400e; display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fa-solid fa-lightbulb" style="color: #f59e0b; font-size: 1.1rem;"></i>
+                                <span><strong>為什麼「美元/盎司」跟「台幣/公克」數字幾乎一樣？</strong> 因為 1 美元約等於 31.5 台幣，而 1 盎司剛好約等於 31.1 公克。兩者相除剛好約等於 1，所以國際金價 $4,642 美元換算成台幣約為 NT$4,642/克。</span>
+                            </div>
+
+                            <!-- 圖表工具列：視圖切換與日期篩選 -->
+                            <div class="gold-chart-toolbar">
+                                <div class="btn-group-range">
+                                    <button type="button" class="btn-gold-mode active" data-mode="twd">🇹🇼 台灣金價 (TWD/g)</button>
+                                    <button type="button" class="btn-gold-mode" data-mode="tsin">🏪 台灣金價 (TWD/錢)</button>
+                                    <button type="button" class="btn-gold-mode" data-mode="usd">🌐 國際金價 (USD/oz)</button>
+                                    <button type="button" class="btn-gold-mode" data-mode="dual">📊 雙幣別對照</button>
+                                </div>
+
+                                <div class="search-bar gold-search-bar" style="margin-bottom: 0;">
+                                    <div class="date-group">
+                                        <label for="gold-start-date">開始日期</label>
+                                        <input type="date" id="gold-start-date">
+                                    </div>
+                                    <span class="date-separator">至</span>
+                                    <div class="date-group">
+                                        <label for="gold-end-date">結束日期</label>
+                                        <input type="date" id="gold-end-date">
+                                    </div>
+                                    <button id="gold-search-btn" class="primary-btn gold-btn"><i class="fa-solid fa-magnifying-glass"></i> 查詢金價</button>
+                                </div>
+                            </div>
+
+                            <div class="chart-container">
+                                <canvas id="gold-chart"></canvas>
+                            </div>
+                            
+                            <div class="table-container">
+                                <table class="history-table gold-table">
+                                    <thead>
+                                        <tr>
+                                            <th>日期</th>
+                                            <th>台灣金價 (NT$/公克)</th>
+                                            <th>台灣銀樓 (NT$/每錢)</th>
+                                            <th>國際金價 (USD/盎司)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="gold-tbody">
+                                        <!-- 動態產生 -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div> <!-- 結束 gold-auth-view -->
+        </div>
+
+        <!-- ========================================== -->
+        <!-- 板塊三：外幣匯率 (View 3)                   -->
+        <!-- ========================================== -->
+        <div class="tab-view" id="view-fx" style="display: none;">
             <!-- 訪客未登入鎖定提示 -->
             <div id="fx-unauth-view" class="unauth-gate-card" style="display: none;">
                 <i class="fa-solid fa-lock" style="font-size: 3rem; margin-bottom: 1rem; color: #94a3b8;"></i>
@@ -221,213 +428,6 @@
                 </div>
             </section>
             </div> <!-- 結束 fx-auth-view -->
-        </div>
-
-        <!-- ========================================== -->
-        <!-- 板塊二：黃金牌告與走勢 (View 2)            -->
-        <!-- ========================================== -->
-        <div class="tab-view" id="view-gold" style="display: none;">
-            <!-- 訪客未登入鎖定提示 -->
-            <div id="gold-unauth-view" class="unauth-gate-card" style="display: none;">
-                <i class="fa-solid fa-lock" style="font-size: 3rem; margin-bottom: 1rem; color: #f59e0b;"></i>
-                <h3 style="margin-bottom: 0.5rem; color: #1e293b;">請先登入以解鎖黃金牌告與即時金價走勢</h3>
-                <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 1.5rem;">登入後即可查看國際金價 (USD/oz) 與台灣金價 (TWD/g) 最新報價、走勢圖表與試算。</p>
-                <button class="primary-btn btn-gate-login" style="padding: 0.75rem 1.75rem; font-size: 0.95rem; margin: 0 auto; display: inline-flex; background: #f59e0b;">
-                    <i class="fa-solid fa-right-to-bracket"></i> 立即登入 / 申請審核
-                </button>
-            </div>
-
-            <!-- 已登入黃金內容 -->
-            <div id="gold-auth-view">
-                <!-- 黃金牌告與走勢區塊 -->
-                <section class="gold-section">
-                    <div class="glass-panel gold-panel">
-                        <div class="gold-header">
-                            <h2><i class="fa-solid fa-coins gold-icon"></i> 黃金即時金價與歷史走勢</h2>
-                            <div class="api-key-container">
-                                <span class="badge-vault" id="gold-quota-badge" style="cursor: pointer; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="點擊查詢本月剩餘次數">
-                                    <i class="fa-solid fa-gauge-high"></i> <span id="gold-quota-text">查詢 GoldAPI 剩餘額度</span>
-                                </span>
-                            </div>
-                        </div>
-
-                        <div class="loading-spinner" id="gold-loading" style="display: none;">
-                            <i class="fa-solid fa-circle-notch fa-spin"></i> 金價讀取中...
-                        </div>
-
-                        <div id="gold-content">
-                            <!-- 即時牌告卡片 (台灣公克、銀樓每錢、國際盎司) -->
-                            <div class="gold-current-prices">
-                                <div class="gold-price-card twd-card" style="border: 2px solid #16a34a; background: linear-gradient(135deg, rgba(240, 253, 244, 0.95), rgba(220, 252, 231, 0.7));">
-                                    <div class="gold-price-title" style="color: #15803d; font-weight: 700;">🇹🇼 台灣金價 (台幣/公克)</div>
-                                    <div class="gold-price-value" style="color: #166534;">NT$<span id="gold-twd-price">--</span></div>
-                                    <div class="gold-price-note">台灣銀行黃金存摺與常用公制報價 (1克)</div>
-                                </div>
-                                <div class="gold-price-card tsin-card" style="border: 2px solid #d97706; background: linear-gradient(135deg, rgba(254, 243, 199, 0.95), rgba(253, 230, 138, 0.7));">
-                                    <div class="gold-price-title" style="color: #b45309; font-weight: 700;">🏪 台灣銀樓 (台幣/每錢)</div>
-                                    <div class="gold-price-value" style="color: #92400e;">NT$<span id="gold-tsin-price">--</span></div>
-                                    <div class="gold-price-note">台灣銀樓飾金傳統計價單位 (1台錢 = 3.75公克)</div>
-                                </div>
-                                <div class="gold-price-card usd-card">
-                                    <div class="gold-price-title">🌐 國際金價 (美元/盎司)</div>
-                                    <div class="gold-price-value">$<span id="gold-usd-price">--</span></div>
-                                    <div class="gold-price-note">全球通用基準 (1金衡盎司 ≈ 31.1035公克)</div>
-                                </div>
-                            </div>
-
-                            <!-- 換算知識白話解說 -->
-                            <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 0.65rem 1rem; margin-bottom: 1rem; font-size: 0.8rem; color: #92400e; display: flex; align-items: center; gap: 0.5rem;">
-                                <i class="fa-solid fa-lightbulb" style="color: #f59e0b; font-size: 1.1rem;"></i>
-                                <span><strong>為什麼「美元/盎司」跟「台幣/公克」數字幾乎一樣？</strong> 因為 1 美元約等於 31.5 台幣，而 1 盎司剛好約等於 31.1 公克。兩者相除剛好約等於 1，所以國際金價 $4,642 美元換算成台幣約為 NT$4,642/克。</span>
-                            </div>
-
-                            <!-- 圖表工具列：視圖切換與日期篩選 -->
-                            <div class="gold-chart-toolbar">
-                                <div class="btn-group-range">
-                                    <button type="button" class="btn-gold-mode active" data-mode="twd">🇹🇼 台灣金價 (TWD/g)</button>
-                                    <button type="button" class="btn-gold-mode" data-mode="tsin">🏪 台灣金價 (TWD/錢)</button>
-                                    <button type="button" class="btn-gold-mode" data-mode="usd">🌐 國際金價 (USD/oz)</button>
-                                    <button type="button" class="btn-gold-mode" data-mode="dual">📊 雙幣別對照</button>
-                                </div>
-
-                                <div class="search-bar gold-search-bar" style="margin-bottom: 0;">
-                                    <div class="date-group">
-                                        <label for="gold-start-date">開始日期</label>
-                                        <input type="date" id="gold-start-date">
-                                    </div>
-                                    <span class="date-separator">至</span>
-                                    <div class="date-group">
-                                        <label for="gold-end-date">結束日期</label>
-                                        <input type="date" id="gold-end-date">
-                                    </div>
-                                    <button id="gold-search-btn" class="primary-btn gold-btn"><i class="fa-solid fa-magnifying-glass"></i> 查詢金價</button>
-                                </div>
-                            </div>
-
-                            <div class="chart-container">
-                                <canvas id="gold-chart"></canvas>
-                            </div>
-                            
-                            <div class="table-container">
-                                <table class="history-table gold-table">
-                                    <thead>
-                                        <tr>
-                                            <th>日期</th>
-                                            <th>台灣金價 (NT$/公克)</th>
-                                            <th>台灣銀樓 (NT$/每錢)</th>
-                                            <th>國際金價 (USD/盎司)</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="gold-tbody">
-                                        <!-- 動態產生 -->
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-            </div> <!-- 結束 gold-auth-view -->
-        </div>
-
-        <!-- ========================================== -->
-        <!-- 板塊三：股票存股健檢與篩選器 (View 3)       -->
-        <!-- ========================================== -->
-        <div class="tab-view" id="view-stocks" style="display: none;">
-            <!-- 存股 5 大維度速查卡 (Collapsible) -->
-            <section class="rules-summary-section glass-panel">
-                <div class="rules-header" id="rules-toggle-btn">
-                    <div class="rules-title">
-                        <h2><i class="fa-solid fa-book-bookmark"></i> 4 本經典名著：存股 5 大維度核心清單速查</h2>
-                        <span class="rules-subtitle">（點擊展開/收合指標詳情）</span>
-                    </div>
-                    <i class="fa-solid fa-chevron-down toggle-icon" id="rules-toggle-icon"></i>
-                </div>
-                
-                <div class="rules-body" id="rules-body-content" style="display: none;">
-                    <div class="rules-grid">
-                        <div class="rule-card">
-                            <div class="rule-card-title"><i class="fa-solid fa-shield"></i> 1. 規模與護城河</div>
-                            <ul>
-                                <li>股本 > 300 億（大型股不易被主力炒作）</li>
-                                <li>產業龍頭或具備官股背景（不倒翁神盾）</li>
-                                <li>產業分散（金融、電信、民生、ETF）</li>
-                            </ul>
-                        </div>
-                        <div class="rule-card">
-                            <div class="rule-card-title"><i class="fa-solid fa-hand-holding-dollar"></i> 2. 獲利體質</div>
-                            <ul>
-                                <li>連續 5~10 年獲利穩定無虧損</li>
-                                <li>近 5 年平均 EPS > 1 元且無衰退</li>
-                                <li>每月公布自結 EPS 更佳（資訊透明）</li>
-                            </ul>
-                        </div>
-                        <div class="rule-card">
-                            <div class="rule-card-title"><i class="fa-solid fa-money-bill-trend-up"></i> 3. 配息政策與現金流</div>
-                            <ul>
-                                <li>連續 10 年以上配發股利不中斷</li>
-                                <li>每年配息落差小（避開景氣循環股）</li>
-                                <li>盈餘分配率 ≥ 70%（公司大方分紅）</li>
-                            </ul>
-                        </div>
-                        <div class="rule-card">
-                            <div class="rule-card-title"><i class="fa-solid fa-bed"></i> 4. 波動與安定感</div>
-                            <ul>
-                                <li>Beta 值 < 0.8（最好 < 0.6 牛皮股）</li>
-                                <li>大跌時抗跌、不隨大盤暴起暴跌</li>
-                                <li>安心睡覺、不需天天焦慮盯盤</li>
-                            </ul>
-                        </div>
-                        <div class="rule-card">
-                            <div class="rule-card-title"><i class="fa-solid fa-tag"></i> 5. 估價與買進時機</div>
-                            <ul>
-                                <li>現金殖利率 ≥ 5% 為好買點（<5% 暫緩）</li>
-                                <li>股價淨值比 PB < 2.5（不買昂貴股）</li>
-                                <li>低本益比 PE（物美價廉才出手）</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 股票篩選工具列 -->
-            <section class="stocks-toolbar glass-panel">
-                <!-- 頂部資訊列：Gemini AI 調用額度 (位於全部標的上方) -->
-                <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 0.65rem;">
-                    <span class="badge-vault" id="gemini-quota-badge" style="cursor: pointer; font-size: 0.78rem; display: inline-flex; align-items: center; gap: 0.35rem; background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; border-radius: 8px; padding: 0.35rem 0.75rem;" title="點擊檢測 Gemini AI 今日調用量與官方免費額度">
-                        <i class="fa-solid fa-brain"></i> <span id="gemini-quota-text">Gemini 今日調用: 0 / 1,500 次 (剩餘 1,500 次)</span>
-                    </span>
-                </div>
-
-                <div class="filter-chips-group">
-                    <button class="filter-chip active" data-filter="all">全部標的 (<span id="count-all">0</span>)</button>
-                    <button class="filter-chip" data-filter="watchlist"><i class="fa-solid fa-star"></i> 我的自選 (<span id="count-fav">0</span>)</button>
-                    <button class="filter-chip chip-dividend" data-filter="dividend"><i class="fa-solid fa-crown"></i> 🏆 適合穩健存股</button>
-                    <button class="filter-chip chip-cashflow" data-filter="cashflow"><i class="fa-solid fa-money-bill-wave"></i> 💰 適合領高利息</button>
-                    <button class="filter-chip chip-swing" data-filter="swing"><i class="fa-solid fa-bolt"></i> 🚀 適合波段賺價差</button>
-                    <button class="filter-chip" data-filter="high-pass"><i class="fa-solid fa-circle-check"></i> 8項以上達標</button>
-                </div>
-                
-                <div class="search-stock-box" style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-                    <div style="position: relative; flex: 1; min-width: 200px;">
-                        <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                        <input type="text" id="stock-search-input" placeholder="搜尋股票代碼或名稱 (如 2886 兆豐金)...">
-                    </div>
-                    <button class="primary-btn" id="btn-open-add-stock-modal" style="white-space: nowrap; padding: 0.55rem 1rem; font-size: 0.85rem;">
-                        <i class="fa-solid fa-plus"></i> 新增股票
-                    </button>
-                    <button class="primary-btn" id="btn-open-batch-stock-modal" style="white-space: nowrap; padding: 0.55rem 0.95rem; font-size: 0.85rem; background: linear-gradient(135deg, #6366f1, #4f46e5);" title="一次匯入多檔股票並由 AI 批次健檢">
-                        <i class="fa-solid fa-layer-group"></i> 批次匯入
-                    </button>
-                    <button class="secondary-btn" id="btn-refresh-all-stocks" style="white-space: nowrap; padding: 0.55rem 0.85rem; font-size: 0.85rem; border-radius: 8px; cursor: pointer;" title="一鍵同步所有股票最新收盤價">
-                        <i class="fa-solid fa-arrows-rotate"></i> 更新最新股價
-                    </button>
-                </div>
-            </section>
-
-            <!-- 股票健檢卡片網格清單 -->
-            <section class="stocks-grid" id="stocks-container">
-                <!-- 由 JS 動態渲染股票健檢卡片 -->
-            </section>
         </div>
         
         <footer>
