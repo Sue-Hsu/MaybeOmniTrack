@@ -1,7 +1,7 @@
 /**
  * MaybeOmniTrack - 財務白癡救星 全功能核心程式碼
  * 包含：外幣匯率、黃金牌告、存股健檢、K線歷史走勢、Google OAuth / 特定帳號雙登入、
- *       Firebase 機密保險庫、Supabase 關聯資料庫（DB-First 快取優先自動入庫機制）
+ *       Firebase 機密保險庫、Supabase 關聯資料庫（DB-First 全自動同步與自動入庫引擎）
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -405,12 +405,17 @@ document.addEventListener('DOMContentLoaded', () => {
         return null;
     }
 
-    // 股票清單與自選股同步初始化
+    // 股票清單、自選股、匯率與金價自動初始化 Pipeline
     async function initSupabaseDataPipeline() {
         const client = getSupabaseClient();
-        if (!client) return;
+        if (!client) {
+            console.log("ℹ️ Supabase 尚未連線（登入 Google 後將自動從 Firebase 載入或在後台設定）");
+            return;
+        }
 
         try {
+            console.log("🔄 正在與 Supabase 進行全模組自動同步與檢查...");
+
             // 1. 同步自選清單 (watchlist)
             const { data: favData } = await client.from('watchlist').select('stock_id');
             if (favData && favData.length > 0) {
@@ -419,9 +424,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // 2. 查詢 Supabase stocks 資料表
-            const { data: dbStocks, error } = await client.from('stocks').select('*').order('stock_id', { ascending: true });
-            if (dbStocks && !error && dbStocks.length > 0) {
-                console.log(`⚡ [Supabase] 成功從雲端資料庫載入 ${dbStocks.length} 檔股票！`);
+            const { data: dbStocks, error: errStocks } = await client.from('stocks').select('*').order('stock_id', { ascending: true });
+            if (dbStocks && !errStocks && dbStocks.length > 0) {
+                console.log(`⚡ [Supabase] 成功從雲端載入 ${dbStocks.length} 檔股票！`);
                 STOCKS_DATA = dbStocks.map(row => ({
                     id: row.stock_id,
                     name: row.name,
@@ -439,7 +444,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }));
             } else {
                 // 如果 Supabase 是空的，自動將 14 檔經典股票初始化寫入 Supabase
-                console.log("🌱 [Supabase] 檢測到 stocks 表格尚無資料，自動將 14 檔經典名著股票初始化寫入 Supabase...");
+                console.log("🌱 [Supabase] stocks 表格為空，自動寫入 14 檔經典股票...");
                 const seedRows = STOCKS_DATA.map(s => ({
                     stock_id: s.id,
                     name: s.name,
@@ -455,11 +460,81 @@ document.addEventListener('DOMContentLoaded', () => {
                     category_tag: s.category,
                     diagnosis_note: s.diagnosis
                 }));
-                await client.from('stocks').upsert(seedRows);
-                console.log("✅ [Supabase] 14 檔股票已自動寫入 Supabase 雲端！");
+                const { error: seedErr } = await client.from('stocks').upsert(seedRows);
+                if (seedErr) console.error("stocks upsert error:", seedErr);
+                else console.log("✅ [Supabase] 14 檔股票已成功寫入 Supabase！");
+            }
+
+            // 3. 檢查並自動初始化匯率資料表 (exchange_rates)
+            const { data: dbFx } = await client.from('exchange_rates').select('trade_date').limit(5);
+            if (!dbFx || dbFx.length === 0) {
+                console.log("🌱 [Supabase] exchange_rates 表格為空，自動抓取並寫入近期匯率...");
+                await fetchAndSaveFxToSupabase(client);
+            }
+
+            // 4. 檢查並自動初始化金價資料表 (gold_prices)
+            const { data: dbGold } = await client.from('gold_prices').select('trade_date').limit(5);
+            if (!dbGold || dbGold.length === 0) {
+                console.log("🌱 [Supabase] gold_prices 表格為空，自動計算並寫入近期金價...");
+                await fetchAndSaveGoldToSupabase(client);
             }
         } catch (e) {
             console.warn("Supabase pipeline init warning:", e);
+        }
+    }
+
+    async function fetchAndSaveFxToSupabase(client) {
+        if (!client) return;
+        try {
+            const today = new Date().toISOString().split('T')[0];
+            const past = new Date(); past.setDate(new Date().getDate() - 90);
+            const startStr = past.toISOString().split('T')[0];
+
+            let list = [];
+            try {
+                const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanExchangeRate&data_id=USD&start_date=${startStr}&end_date=${today}`);
+                const json = await res.json();
+                if (json.msg === 'success' && json.data) list = json.data;
+            } catch (err) {
+                list = generateMockFx(startStr, today);
+            }
+
+            if (list.length === 0) list = generateMockFx(startStr, today);
+
+            const rows = list.map(d => ({
+                trade_date: d.date,
+                currency: 'USD',
+                spot_sell: d.spot_sell,
+                spot_buy: d.spot_buy,
+                cash_sell: d.cash_sell || d.spot_sell,
+                cash_buy: d.cash_buy || d.spot_buy
+            }));
+            const { error } = await client.from('exchange_rates').upsert(rows);
+            if (error) console.error("Supabase exchange_rates upsert error:", error);
+            else console.log(`✅ [Supabase] 成功寫入 ${rows.length} 筆匯率資料！`);
+        } catch (e) {
+            console.error("fetchAndSaveFxToSupabase error:", e);
+        }
+    }
+
+    async function fetchAndSaveGoldToSupabase(client) {
+        if (!client) return;
+        try {
+            const today = new Date().toISOString().split('T')[0];
+            const past = new Date(); past.setDate(new Date().getDate() - 30);
+            const startStr = past.toISOString().split('T')[0];
+
+            const list = generateMockGold(startStr, today);
+            const rows = list.map(d => ({
+                trade_date: d.date,
+                usd_per_oz: d.usd,
+                twd_per_gram: d.twd
+            }));
+            const { error } = await client.from('gold_prices').upsert(rows);
+            if (error) console.error("Supabase gold_prices upsert error:", error);
+            else console.log(`✅ [Supabase] 成功寫入 ${rows.length} 筆金價資料！`);
+        } catch (e) {
+            console.error("fetchAndSaveGoldToSupabase error:", e);
         }
     }
 
@@ -538,6 +613,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 登入後從 Firebase 保險庫拉取最新金鑰與設定
         await fetchSecretsFromFirebase();
+        await initSupabaseDataPipeline();
 
         let isAdmin = false;
         const adminEmailsList = state.config.adminGoogleEmails
@@ -602,6 +678,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (u === state.config.customUser && p === state.config.customPass) {
                 setLoggedInUser({ name: u, email: '', role: 'user' });
                 loginModal.style.display = 'none';
+                await initSupabaseDataPipeline();
                 alert(`歡迎回來，${u}！您已成功登入系統（一般用戶權限）。`);
             } else {
                 alert('帳號或密碼錯誤！請向管理員確認。');
@@ -637,15 +714,19 @@ document.addEventListener('DOMContentLoaded', () => {
             initFirebaseVault();
             await saveSecretsToFirebase();
 
-            // 2. 同步儲存至 Supabase 資料表
+            // 2. 同步儲存至 Supabase 資料表並觸發全模組入庫
             supabaseClient = null;
             await saveSettingsToSupabase();
             await initSupabaseDataPipeline();
 
+            // 3. 立即重整匯率與金價
+            fetchFxHistory(startDateInput.value, endDateInput.value);
+            fetchGoldHistory(goldStartDateInput.value, goldEndDateInput.value);
+
             adminModal.style.display = 'none';
             initGoogleIdentityServices();
             renderStocks();
-            alert('✅ 雲端與系統設定儲存成功！已同步至 Firebase 保險庫與 Supabase，在任何裝置登入 Google 即可自動連線！');
+            alert('✅ 雲端設定已成功同步至 Firebase 與 Supabase！所有資料已自動進駐資料庫。');
         });
     }
 
@@ -1164,9 +1245,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             cash_sell: d.cash_sell || d.spot_sell,
                             cash_buy: d.cash_buy || d.spot_buy
                         }));
-                        client.from('exchange_rates').upsert(rows).then(() => {
-                            console.log(`💾 [自動入庫] 已將 ${rows.length} 筆匯率快取至 Supabase！`);
-                        });
+                        const { error } = await client.from('exchange_rates').upsert(rows);
+                        if (error) console.error("Supabase exchange_rates upsert error:", error);
+                        else console.log(`💾 [自動入庫] 已將 ${rows.length} 筆匯率快取至 Supabase！`);
                     }
                 }
             } catch (e) {
@@ -1233,9 +1314,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     usd_per_oz: d.usd,
                     twd_per_gram: d.twd
                 }));
-                client.from('gold_prices').upsert(rows).then(() => {
-                    console.log(`💾 [自動入庫] 已將 ${rows.length} 筆金價快取至 Supabase！`);
-                });
+                const { error } = await client.from('gold_prices').upsert(rows);
+                if (error) console.error("Supabase gold_prices upsert error:", error);
+                else console.log(`💾 [自動入庫] 已將 ${rows.length} 筆金價快取至 Supabase！`);
             }
         }
 
