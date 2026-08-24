@@ -1,3 +1,7 @@
+# 專案自訂排除
+選股參考/
+GEMINI.md
+
 # OS generated files
 .DS_Store
 Thumbs.db
