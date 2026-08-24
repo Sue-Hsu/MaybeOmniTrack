@@ -2233,6 +2233,7 @@ ${promptRules}
         let list = [];
         const client = getSupabaseClient();
         const existingMap = new Map();
+        const goldKey = state.config.goldApiKey;
 
         // 1. 先查 Supabase gold_prices 現有快取
         if (client) {
@@ -2245,125 +2246,92 @@ ${promptRules}
                     .order('trade_date', { ascending: true });
                 
                 if (dbGold && !error && dbGold.length > 0) {
-                    const outdatedRows = [];
                     dbGold.forEach(d => {
-                        let usd = parseFloat(d.usd_per_oz);
-                        let twd = parseFloat(d.twd_per_gram);
-                        
-                        // 若資料庫存有舊版過期金價 (如 < 3500)，自動修正校正為最新行情 4642+ 水位
-                        if (usd < 3500) {
-                            usd = parseFloat((4642 + (Math.random() - 0.48) * 20).toFixed(2));
-                            twd = parseFloat(((usd * (state.exchangeRates.USD || 32.5)) / 31.1035).toFixed(2));
-                            outdatedRows.push({
-                                trade_date: d.trade_date,
-                                usd_per_oz: usd,
-                                twd_per_gram: twd
-                            });
-                        }
-
                         existingMap.set(d.trade_date, {
                             date: d.trade_date,
-                            usd: usd,
-                            twd: twd
+                            usd: parseFloat(d.usd_per_oz),
+                            twd: parseFloat(d.twd_per_gram)
                         });
                     });
-
-                    if (outdatedRows.length > 0) {
-                        client.from('gold_prices').upsert(outdatedRows, { onConflict: 'trade_date' }).then(() => {
-                            console.log(`🔄 [金價校正] 已將 Supabase 中 ${outdatedRows.length} 筆舊版歷史快取自動校正至最新 4642 水位！`);
-                        });
-                    }
-
-                    console.log(`⚡ [Supabase 命中] 從 Supabase 讀取到 ${dbGold.length} 筆現有金價快取`);
+                    console.log(`⚡ [Supabase 命中] 從 Supabase 讀取到 ${dbGold.length} 筆真實金價紀錄`);
                 }
             } catch (e) {
                 console.warn("Supabase gold_prices query error:", e);
             }
         }
 
-        // 2. 檢查區間內是否有缺少的交易日 (排除週末)
-        const missingDates = [];
-        let cur = new Date(start);
-        const endObj = new Date(end);
-        while (cur <= endObj) {
-            if (cur.getDay() !== 0 && cur.getDay() !== 6) {
-                const dStr = cur.toISOString().split('T')[0];
-                if (!existingMap.has(dStr)) {
-                    missingDates.push(dStr);
-                }
-            }
-            cur.setDate(cur.getDate() + 1);
-        }
-
-        // 3. 若有缺漏日期，嘗試取得即時基準並精準補齊
-        if (missingDates.length > 0) {
-            console.log(`🌐 [金價補充] 發現 Supabase 缺少 ${missingDates.length} 個交易日的金價，正在抓取並自動補齊...`);
-            
-            let baseUsd = 4642.0;
-            if (state.config.goldApiKey) {
-                try {
-                    const res = await fetch("https://www.goldapi.io/api/XAU/USD", {
-                        headers: { "x-access-token": state.config.goldApiKey }
-                    });
-                    if (res.ok) {
-                        const j = await res.json();
-                        if (j.price) baseUsd = j.price;
-                    }
-                } catch (err) {
-                    console.warn("GoldAPI fetch fallback", err);
-                }
-            }
-
-            const newRows = [];
-            let currentPrice = baseUsd;
-            missingDates.forEach(dStr => {
-                currentPrice += (Math.random() - 0.48) * 12;
-                const usd = parseFloat(currentPrice.toFixed(2));
-                const twd = parseFloat(((usd * (state.exchangeRates.USD || 32.5)) / 31.1035).toFixed(2));
-                
-                const item = { date: dStr, usd, twd };
-                existingMap.set(dStr, item);
-                newRows.push({
-                    trade_date: dStr,
-                    usd_per_oz: usd,
-                    twd_per_gram: twd
+        // 2. 若有設定 GoldAPI Key，調用官方 API 取得真實最新金價並自動入庫
+        if (goldKey) {
+            try {
+                console.log("🌐 [GoldAPI] 正在向官方 API 抓取真實金價...");
+                const res = await fetch("https://www.goldapi.io/api/XAU/USD", {
+                    headers: { "x-access-token": goldKey }
                 });
-            });
+                if (res.ok) {
+                    const j = await res.json();
+                    if (j.price) {
+                        const todayStr = new Date().toISOString().split('T')[0];
+                        const realUsd = parseFloat(j.price);
+                        const usdRate = state.exchangeRates.USD || 32.5;
+                        const realTwd = parseFloat(((realUsd * usdRate) / 31.1035).toFixed(2));
+                        const todayRow = { date: todayStr, usd: realUsd, twd: realTwd };
+                        existingMap.set(todayStr, todayRow);
 
-            // 4. 將補齊的日期全數寫入 Supabase
-            if (client && newRows.length > 0) {
-                const { error: upsertErr } = await client
-                    .from('gold_prices')
-                    .upsert(newRows, { onConflict: 'trade_date' });
-                if (upsertErr) {
-                    console.error("Supabase gold_prices upsert error:", upsertErr);
+                        // 將真實 API 數值寫入 Supabase
+                        if (client) {
+                            client.from('gold_prices').upsert([{
+                                trade_date: todayStr,
+                                usd_per_oz: realUsd,
+                                twd_per_gram: realTwd
+                            }], { onConflict: 'trade_date' }).then(() => {
+                                console.log(`💾 [真實入庫] 成功將 GoldAPI 官方即時金價 ($${realUsd}) 寫入 Supabase！`);
+                            });
+                        }
+                    }
                 } else {
-                    console.log(`💾 [自動入庫] 成功將 ${newRows.length} 筆金價資料寫入 Supabase！`);
+                    console.warn(`GoldAPI 回傳狀態碼 ${res.status}`);
                 }
+            } catch (err) {
+                console.warn("GoldAPI live fetch error:", err);
             }
         }
 
         list = Array.from(existingMap.values()).sort((a, b) => a.date.localeCompare(b.date));
-        if (list.length === 0) list = generateMockGold(start, end);
+
+        if (list.length === 0) {
+            goldUsdPrice.textContent = "--";
+            goldTwdPrice.textContent = "--";
+            if (goldTsinPrice) goldTsinPrice.textContent = "--";
+            if (goldChartInstance) goldChartInstance.destroy();
+            goldTbody.innerHTML = `
+                <tr>
+                    <td colspan="4" style="text-align: center; color: #b45309; padding: 2rem;">
+                        <i class="fa-solid fa-triangle-exclamation" style="font-size: 1.5rem; margin-bottom: 0.5rem; display: block;"></i>
+                        Supabase 尚無此區間金價紀錄。請確認「後台設定」中已填入 GoldAPI Token，點擊「查詢金價」即可從官方 API 抓取真實數據並自動寫入資料庫！
+                    </td>
+                </tr>
+            `;
+            return;
+        }
 
         state.cachedGoldList = list;
 
-        const lastItem = list.length > 0 ? list[list.length - 1] : { usd: 4642.36, twd: 4790.00 };
-        goldUsdPrice.textContent = lastItem.usd.toFixed(2);
-        goldTwdPrice.textContent = lastItem.twd.toFixed(2);
-        if (goldTsinPrice) goldTsinPrice.textContent = (lastItem.twd * 3.75).toFixed(1);
+        const lastItem = list[list.length - 1];
+        goldUsdPrice.textContent = lastItem.usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        goldTwdPrice.textContent = lastItem.twd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        if (goldTsinPrice) goldTsinPrice.textContent = (lastItem.twd * 3.75).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
         renderGoldChart(list);
 
         goldTbody.innerHTML = '';
         [...list].reverse().forEach(item => {
             const tr = document.createElement('tr');
-            const tsinVal = (item.twd * 3.75).toFixed(1);
+            const tsinVal = (item.twd * 3.75).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
             tr.innerHTML = `
                 <td><strong>${item.date}</strong></td>
-                <td style="color: #166534; font-weight: 700;">NT$${item.twd.toFixed(2)}</td>
+                <td style="color: #166534; font-weight: 700;">NT$${item.twd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 <td style="color: #b45309; font-weight: 700;">NT$${tsinVal}</td>
-                <td style="color: #2563eb;">$${item.usd.toFixed(2)}</td>
+                <td style="color: #2563eb;">$${item.usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             `;
             goldTbody.appendChild(tr);
         });
