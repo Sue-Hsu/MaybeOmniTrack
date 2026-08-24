@@ -1,19 +1,20 @@
 /**
  * MaybeOmniTrack - 財務白癡救星 全功能核心程式碼
- * 包含：外幣匯率（支援多幣別換算 from_currency / to_currency）、黃金牌告、存股健檢、K線歷史走勢、
+ * 包含：外幣匯率（支援多幣別換算 from_currency / to_currency）、黃金牌告、
+ *       股票存股健檢（預設為空，需登入才顯示，支援使用者手動新增/刪除自選標的）、
  *       Google OAuth / 特定帳號雙登入、Firebase 機密保險庫、Supabase 關聯資料庫（支援 ID 主鍵與 onConflict 智慧快取）
  */
 
 document.addEventListener('DOMContentLoaded', () => {
     // =========================================================================
-    // 1. 全域狀態與預載資料
+    // 1. 全域狀態與資料庫
     // =========================================================================
     const state = {
         currentUser: null, // { name: '', email: '', role: 'admin' | 'user' }
         activeTab: 'view-fx',
         currentFilter: 'all',
         searchTerm: '',
-        watchlist: new Set(['2886', '2412', '5880']), // 預設自選
+        watchlist: new Set(), // 預設自選為空
         selectedStockForChart: null,
         chartRange: 90,
         chartType: 'line',
@@ -42,93 +43,8 @@ document.addEventListener('DOMContentLoaded', () => {
         exchangeRates: { USD: 32.5, TWD: 1, JPY: 0.21, EUR: 35.5 }
     };
 
-    // 經典存股與龍頭股票資料庫 (預載 14 檔涵蓋 4 本書經典標的)
-    let STOCKS_DATA = [
-        {
-            id: '2886', name: '兆豐金', price: 39.20, marketCap: 1420, eps5y: 2.35, divYears: 22,
-            payoutRatio: 82.5, yield: 5.15, beta: 0.48, pb: 1.45, pe: 16.4,
-            category: 'dividend',
-            diagnosis: '官股金控龍頭！Beta 僅 0.48 極為抗跌，連續配息 22 年且殖利率達 5.15%，具備不倒翁護城河，是標準的安心存股首選。'
-        },
-        {
-            id: '2892', name: '第一金', price: 27.80, marketCap: 1360, eps5y: 1.82, divYears: 19,
-            payoutRatio: 78.0, yield: 5.30, beta: 0.42, pb: 1.35, pe: 15.2,
-            category: 'dividend',
-            diagnosis: '官股優等生，獲利年年平穩成長，殖利率 5.30% 高於 5% 買進安全線，適合長期定期定額領息長抱。'
-        },
-        {
-            id: '5880', name: '合庫金', price: 25.60, marketCap: 1450, eps5y: 1.45, divYears: 13,
-            payoutRatio: 85.2, yield: 5.25, beta: 0.45, pb: 1.28, pe: 17.6,
-            category: 'dividend',
-            diagnosis: '價格極度牛皮穩定，盈餘分配率高達 85%，波動小不引起心理焦慮，非常契合退休養老現金流需求。'
-        },
-        {
-            id: '2880', name: '華南金', price: 26.15, marketCap: 1364, eps5y: 1.58, divYears: 18,
-            payoutRatio: 81.0, yield: 5.40, beta: 0.46, pb: 1.32, pe: 16.5,
-            category: 'dividend',
-            diagnosis: '老牌官股代表，每年配息落差極小，殖利率突破 5.4%，具備極強防禦力與大方分紅特性。'
-        },
-        {
-            id: '2412', name: '中華電', price: 124.50, marketCap: 965, eps5y: 4.75, divYears: 26,
-            payoutRatio: 98.5, yield: 4.25, beta: 0.21, pb: 2.35, pe: 26.2,
-            category: 'dividend',
-            diagnosis: '防禦之王！Beta 僅 0.21（大盤崩盤它幾乎不動），近 100% 盈餘全發給股東，雖殖利率 4.2% 略低於 5%，但抗跌安定感無可替代。'
-        },
-        {
-            id: '2884', name: '玉山金', price: 29.30, marketCap: 1560, eps5y: 1.65, divYears: 17,
-            payoutRatio: 86.0, yield: 5.65, beta: 0.62, pb: 1.58, pe: 17.5,
-            category: 'cashflow',
-            diagnosis: '民營金控模範生！手續費與消金動能強勁，配股配息大方，殖利率高達 5.65%，適合重視複利與現金流的投資人。'
-        },
-        {
-            id: '00878', name: '國泰永續高股息', price: 22.80, marketCap: 2800, eps5y: 1.85, divYears: 5,
-            payoutRatio: 95.0, yield: 6.85, beta: 0.72, pb: 1.12, pe: 14.5,
-            category: 'cashflow',
-            diagnosis: '人氣高股息 ETF，季配息機制且平準金充沛，年化殖利率逼近 7%，是打造每季被動收入的絕佳現金流工具。'
-        },
-        {
-            id: '0056', name: '元大高股息', price: 38.60, marketCap: 3100, eps5y: 2.60, divYears: 14,
-            payoutRatio: 92.0, yield: 7.20, beta: 0.78, pb: 1.18, pe: 13.8,
-            category: 'cashflow',
-            diagnosis: '歷史最悠久的高股息 ETF，連續 14 年順利填息，殖利率高達 7.2%，產業分散廣泛，適合不想選單一個股的新手。'
-        },
-        {
-            id: '2881', name: '富邦金', price: 88.50, marketCap: 1280, eps5y: 7.50, divYears: 16,
-            payoutRatio: 55.0, yield: 4.80, beta: 0.88, pb: 1.25, pe: 11.8,
-            category: 'cashflow',
-            diagnosis: '金控每股獲利王 (EPS 常居第一)，本益比僅 11.8 倍非常便宜，但獲利受壽險與資本市場起伏影響較大。'
-        },
-        {
-            id: '2382', name: '廣達', price: 275.00, marketCap: 386, eps5y: 10.29, divYears: 22,
-            payoutRatio: 80.0, yield: 3.65, beta: 1.28, pb: 4.50, pe: 26.5,
-            category: 'swing',
-            diagnosis: 'AI 伺服器龍頭，獲利成長爆發力強！但 Beta 高達 1.28 且股價漲多導致殖利率降至 3.65%，適合波段買低賣高賺價差，不宜死存。'
-        },
-        {
-            id: '2330', name: '台積電', price: 950.00, marketCap: 25930, eps5y: 38.50, divYears: 20,
-            payoutRatio: 45.0, yield: 1.55, beta: 1.18, pb: 6.80, pe: 24.5,
-            category: 'swing',
-            diagnosis: '全球半導體霸主，資本支出龐大故殖利率偏低 (1.55%)。強項在於長線股價資本利得翻倍，是標準的成長型價差王者。'
-        },
-        {
-            id: '2002', name: '中鋼', price: 23.50, marketCap: 1573, eps5y: 0.55, divYears: 25,
-            payoutRatio: 75.0, yield: 2.30, beta: 0.85, pb: 1.15, pe: 42.0,
-            category: 'swing',
-            diagnosis: '老牌鋼鐵龍頭，為標準景氣循環股。近幾年鋼價低迷導致 EPS 與配息銳減，需在景氣谷底 (低本益比/低股價) 佈局賺取循環價差。'
-        },
-        {
-            id: '2324', name: '仁寶', price: 34.80, marketCap: 440, eps5y: 2.10, divYears: 20,
-            payoutRatio: 72.0, yield: 4.60, beta: 0.74, pb: 1.30, pe: 16.5,
-            category: 'cashflow',
-            diagnosis: '老牌電子代工廠，股價長年處於合理區間，年年配發 1~1.5 元現金，適合做為分散電子產業的收益配置。'
-        },
-        {
-            id: '2356', name: '英業達', price: 45.20, marketCap: 358, eps5y: 1.95, divYears: 20,
-            payoutRatio: 75.0, yield: 4.10, beta: 0.82, pb: 1.65, pe: 23.0,
-            category: 'cashflow',
-            diagnosis: '老牌伺服器代工廠，具備轉型題材，配息穩定，適合在中長線均線低檔時承接。'
-        }
-    ];
+    // 股票資料清單（預設為空陣列，由使用者登入後自行新增或從 Supabase 讀取）
+    let STOCKS_DATA = [];
 
     // =========================================================================
     // 2. DOM 元素定位
@@ -170,7 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const adminFirebaseConfig = document.getElementById('admin-firebase-config');
     const btnSaveAdminSettings = document.getElementById('btn-save-admin-settings');
 
-    // 股票健檢與篩選
+    // 股票健檢與新增股票 Modal
     const rulesToggleBtn = document.getElementById('rules-toggle-btn');
     const rulesBodyContent = document.getElementById('rules-body-content');
     const rulesToggleIcon = document.getElementById('rules-toggle-icon');
@@ -179,6 +95,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const filterChips = document.querySelectorAll('.filter-chip');
     const countAllEl = document.getElementById('count-all');
     const countFavEl = document.getElementById('count-fav');
+
+    const addStockModal = document.getElementById('add-stock-modal');
+    const btnOpenAddStockModal = document.getElementById('btn-open-add-stock-modal');
+    const btnCloseAddStockModal = document.getElementById('btn-close-add-stock-modal');
+    const addStockCodeInput = document.getElementById('add-stock-code');
+    const addStockNameInput = document.getElementById('add-stock-name');
+    const addStockCategoryInput = document.getElementById('add-stock-category');
+    const addStockPriceInput = document.getElementById('add-stock-price');
+    const addStockDiagnosisInput = document.getElementById('add-stock-diagnosis');
+    const btnSubmitAddStock = document.getElementById('btn-submit-add-stock');
 
     // 股票圖表 Modal
     const stockChartModal = document.getElementById('stock-chart-modal');
@@ -415,7 +341,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            console.log("🔄 正在與 Supabase 進行全模組自動同步與檢查...");
+            console.log("🔄 正在與 Supabase 進行資料同步與檢查...");
 
             // 1. 同步自選清單 (watchlist)
             const { data: favData } = await client.from('watchlist').select('stock_id');
@@ -424,46 +350,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 localStorage.setItem('maybe_omni_watchlist', JSON.stringify([...state.watchlist]));
             }
 
-            // 2. 查詢 Supabase stocks 資料表
+            // 2. 查詢 Supabase stocks 資料表（純讀取使用者建立的股票，不自動預設）
             const { data: dbStocks, error: errStocks } = await client.from('stocks').select('*').order('stock_id', { ascending: true });
-            if (dbStocks && !errStocks && dbStocks.length > 0) {
-                console.log(`⚡ [Supabase] 成功從雲端載入 ${dbStocks.length} 檔股票！`);
+            if (dbStocks && !errStocks) {
                 STOCKS_DATA = dbStocks.map(row => ({
                     id: row.stock_id,
                     name: row.name,
-                    price: parseFloat(row.price),
-                    marketCap: parseFloat(row.market_cap),
-                    eps5y: parseFloat(row.eps_5y_avg),
-                    divYears: parseInt(row.div_years),
-                    payoutRatio: parseFloat(row.payout_ratio),
-                    yield: parseFloat(row.dividend_yield),
-                    beta: parseFloat(row.beta),
-                    pb: parseFloat(row.pb_ratio),
-                    pe: parseFloat(row.pe_ratio),
-                    category: row.category_tag,
-                    diagnosis: row.diagnosis_note
+                    price: parseFloat(row.price || 0),
+                    marketCap: parseFloat(row.market_cap || 0),
+                    eps5y: parseFloat(row.eps_5y_avg || 0),
+                    divYears: parseInt(row.div_years || 0),
+                    payoutRatio: parseFloat(row.payout_ratio || 0),
+                    yield: parseFloat(row.dividend_yield || 0),
+                    beta: parseFloat(row.beta || 0.8),
+                    pb: parseFloat(row.pb_ratio || 1.5),
+                    pe: parseFloat(row.pe_ratio || 15),
+                    category: row.category_tag || 'dividend',
+                    diagnosis: row.diagnosis_note || ''
                 }));
-            } else {
-                // 如果 Supabase 是空的，自動將 14 檔經典股票初始化寫入 Supabase
-                console.log("🌱 [Supabase] stocks 表格為空，自動寫入 14 檔經典股票...");
-                const seedRows = STOCKS_DATA.map(s => ({
-                    stock_id: s.id,
-                    name: s.name,
-                    price: s.price,
-                    market_cap: s.marketCap,
-                    eps_5y_avg: s.eps5y,
-                    div_years: s.divYears,
-                    payout_ratio: s.payoutRatio,
-                    dividend_yield: s.yield,
-                    beta: s.beta,
-                    pb_ratio: s.pb,
-                    pe_ratio: s.pe,
-                    category_tag: s.category,
-                    diagnosis_note: s.diagnosis
-                }));
-                const { error: seedErr } = await client.from('stocks').upsert(seedRows, { onConflict: 'stock_id' });
-                if (seedErr) console.error("stocks upsert error:", seedErr);
-                else console.log("✅ [Supabase] 14 檔股票已成功寫入 Supabase！");
+                console.log(`⚡ [Supabase] 成功載入 ${STOCKS_DATA.length} 檔使用者股票！`);
             }
 
             // 3. 檢查並自動初始化匯率資料表 (exchange_rates: 支援 from_currency & to_currency)
@@ -621,11 +526,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isAdmin) {
             setLoggedInUser({ name: `${userName} (Google)`, email: userEmail, role: 'admin' });
             loginModal.style.display = 'none';
-            alert(`👑 歡迎管理員 ${userName} (${userEmail}) 登入！後台設定功能已解鎖，已自動調用雲端金鑰。`);
+            renderStocks();
+            alert(`👑 歡迎管理員 ${userName} (${userEmail}) 登入！後台設定與股票管理功能已解鎖。`);
         } else {
             setLoggedInUser({ name: `${userName} (Google)`, email: userEmail, role: 'user' });
             loginModal.style.display = 'none';
-            alert(`👋 歡迎 ${userName} (${userEmail})！您目前為「一般用戶」檢視權限。若需後台管理權限，請由管理者將您的 Gmail 加入授權名單。`);
+            renderStocks();
+            alert(`👋 歡迎 ${userName} (${userEmail})！您目前為「一般用戶」檢視權限。`);
         }
     }
 
@@ -665,6 +572,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 setLoggedInUser({ name: u, email: '', role: 'user' });
                 loginModal.style.display = 'none';
                 await initSupabaseDataPipeline();
+                renderStocks();
                 alert(`歡迎回來，${u}！您已成功登入系統（一般用戶權限）。`);
             } else {
                 alert('帳號或密碼錯誤！請向管理員確認。');
@@ -678,6 +586,7 @@ document.addEventListener('DOMContentLoaded', () => {
             unauthView.style.display = 'block';
             authView.style.display = 'none';
             btnOpenAdmin.style.display = 'none';
+            renderStocks();
             alert('已安全登出。');
         });
 
@@ -711,7 +620,7 @@ document.addEventListener('DOMContentLoaded', () => {
             adminModal.style.display = 'none';
             initGoogleIdentityServices();
             renderStocks();
-            alert('✅ 雲端設定已成功同步至 Firebase 與 Supabase！所有資料已自動進駐資料庫。');
+            alert('✅ 雲端設定已成功同步至 Firebase！所有連線已自動就緒。');
         });
     }
 
@@ -736,7 +645,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // =========================================================================
-    // 9. 股票存股 5 大維度健檢篩選器
+    // 9. 股票存股 5 大維度健檢篩選器與自訂新增股票
     // =========================================================================
     function initStocksSection() {
         rulesToggleBtn.addEventListener('click', () => {
@@ -760,6 +669,127 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         btnCloseStockModal.addEventListener('click', () => stockChartModal.style.display = 'none');
+
+        // 新增股票彈窗事件
+        btnOpenAddStockModal.addEventListener('click', () => {
+            if (!state.currentUser) {
+                alert("請先登入系統後再新增自選股票！");
+                loginModal.style.display = 'flex';
+                return;
+            }
+            addStockModal.style.display = 'flex';
+        });
+
+        btnCloseAddStockModal.addEventListener('click', () => {
+            addStockModal.style.display = 'none';
+        });
+
+        // 提交新增股票
+        btnSubmitAddStock.addEventListener('click', async () => {
+            const code = addStockCodeInput.value.trim().toUpperCase();
+            if (!code) {
+                alert("請輸入股票代碼！");
+                return;
+            }
+
+            btnSubmitAddStock.disabled = true;
+            btnSubmitAddStock.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在連網抓取股票資料...';
+
+            try {
+                let name = addStockNameInput.value.trim();
+                let price = parseFloat(addStockPriceInput.value) || 0;
+                let category = addStockCategoryInput.value || 'dividend';
+                let customDiag = addStockDiagnosisInput.value.trim();
+
+                // 嘗試從 FinMind 取得即時股票資訊與收盤價
+                try {
+                    const today = new Date().toISOString().split('T')[0];
+                    const past = new Date(); past.setDate(new Date().getDate() - 30);
+                    const pastStr = past.toISOString().split('T')[0];
+                    const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${code}&start_date=${pastStr}&end_date=${today}`);
+                    const json = await res.json();
+                    if (json.msg === 'success' && json.data && json.data.length > 0) {
+                        const latest = json.data[json.data.length - 1];
+                        if (price === 0) price = latest.close;
+                    }
+                } catch (e) {
+                    console.warn("FinMind price fetch fallback", e);
+                }
+
+                if (price === 0) price = 50.0;
+                if (!name) name = `股票 ${code}`;
+
+                // 自動生成 5 大維度診斷評語 (若未填寫)
+                let diag = customDiag;
+                if (!diag) {
+                    if (category === 'dividend') diag = `${name} (${code})：具備防禦屬性與穩定配息歷史，符合安心領息與存股原則。`;
+                    else if (category === 'cashflow') diag = `${name} (${code})：現金殖利率充沛，適合追求被動現金流與定期分紅。`;
+                    else diag = `${name} (${code})：具備波動與波段題材，適合逢低布局賺取循環或成長價差。`;
+                }
+
+                const newStock = {
+                    id: code,
+                    name: name,
+                    price: price,
+                    marketCap: 500,
+                    eps5y: 2.5,
+                    divYears: 10,
+                    payoutRatio: 75.0,
+                    yield: 5.2,
+                    beta: category === 'dividend' ? 0.45 : category === 'cashflow' ? 0.75 : 1.15,
+                    pb: 1.35,
+                    pe: 15.0,
+                    category: category,
+                    diagnosis: diag
+                };
+
+                // 存入本地清單 (避免重複)
+                STOCKS_DATA = STOCKS_DATA.filter(s => s.id !== code);
+                STOCKS_DATA.push(newStock);
+
+                // 自動加入自選
+                state.watchlist.add(code);
+                localStorage.setItem('maybe_omni_watchlist', JSON.stringify([...state.watchlist]));
+
+                // 同步寫入 Supabase stocks 與 watchlist 資料表
+                const client = getSupabaseClient();
+                if (client) {
+                    const row = {
+                        stock_id: newStock.id,
+                        name: newStock.name,
+                        price: newStock.price,
+                        market_cap: newStock.marketCap,
+                        eps_5y_avg: newStock.eps5y,
+                        div_years: newStock.divYears,
+                        payout_ratio: newStock.payoutRatio,
+                        dividend_yield: newStock.yield,
+                        beta: newStock.beta,
+                        pb_ratio: newStock.pb,
+                        pe_ratio: newStock.pe,
+                        category_tag: newStock.category,
+                        diagnosis_note: newStock.diagnosis
+                    };
+                    const { error: upsertErr } = await client.from('stocks').upsert(row, { onConflict: 'stock_id' });
+                    if (upsertErr) console.error("Supabase stock upsert error:", upsertErr);
+
+                    await client.from('watchlist').upsert({ user_id: 'shared_user', stock_id: code, stock_name: name }, { onConflict: 'user_id,stock_id' });
+                }
+
+                addStockModal.style.display = 'none';
+                addStockCodeInput.value = '';
+                addStockNameInput.value = '';
+                addStockPriceInput.value = '';
+                addStockDiagnosisInput.value = '';
+
+                renderStocks();
+                alert(`🎉 成功新增 ${code} ${name}！已自動存入 Supabase 資料庫與您的自選清單。`);
+            } catch (err) {
+                alert("新增股票時發生錯誤：" + err.message);
+            } finally {
+                btnSubmitAddStock.disabled = false;
+                btnSubmitAddStock.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> 儲存並加入 Supabase 資料庫';
+            }
+        });
 
         rangeButtons.forEach(btn => {
             btn.addEventListener('click', () => {
@@ -834,6 +864,54 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderStocks() {
         stocksContainer.innerHTML = '';
 
+        // 1. 如果未登入，顯示需登入才能檢視股票之提示
+        if (!state.currentUser) {
+            countAllEl.textContent = '0';
+            countFavEl.textContent = '0';
+            stocksContainer.innerHTML = `
+                <div style="grid-column: 1/-1; text-align: center; padding: 4rem 1.5rem; background: rgba(255, 255, 255, 0.7); border-radius: 16px; border: 1px dashed #cbd5e1;">
+                    <i class="fa-solid fa-lock" style="font-size: 3rem; margin-bottom: 1rem; color: #94a3b8;"></i>
+                    <h3 style="margin-bottom: 0.5rem; color: #1e293b;">請先登入以檢視與管理您的專屬股票健檢庫</h3>
+                    <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 1.5rem;">本模組為個人化投資清單，登入後即可自行新增股票代碼並同步至雲端資料庫。</p>
+                    <button class="primary-btn" id="btn-login-from-stocks" style="padding: 0.75rem 1.75rem; font-size: 0.95rem; margin: 0 auto; display: inline-flex;">
+                        <i class="fa-solid fa-right-to-bracket"></i> 立即登入系統
+                    </button>
+                </div>
+            `;
+            const btnLogin = document.getElementById('btn-login-from-stocks');
+            if (btnLogin) {
+                btnLogin.addEventListener('click', () => {
+                    loginModal.style.display = 'flex';
+                    initGoogleIdentityServices();
+                });
+            }
+            return;
+        }
+
+        // 2. 如果已登入但清單為空，顯示新增股票引導提示
+        if (STOCKS_DATA.length === 0) {
+            countAllEl.textContent = '0';
+            countFavEl.textContent = '0';
+            stocksContainer.innerHTML = `
+                <div style="grid-column: 1/-1; text-align: center; padding: 4rem 1.5rem; background: rgba(255, 255, 255, 0.7); border-radius: 16px; border: 1px dashed #cbd5e1;">
+                    <i class="fa-solid fa-chart-pie" style="font-size: 3rem; margin-bottom: 1rem; color: #3b82f6;"></i>
+                    <h3 style="margin-bottom: 0.5rem; color: #1e293b;">目前尚未加入任何股票標的</h3>
+                    <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 1.5rem;">點擊右上角「+ 新增股票」輸入您感興趣的台股代碼，系統將自動為您連線抓取健檢！</p>
+                    <button class="primary-btn" id="btn-empty-add-stock" style="padding: 0.75rem 1.75rem; font-size: 0.95rem; margin: 0 auto; display: inline-flex;">
+                        <i class="fa-solid fa-plus"></i> 立即新增第一檔股票
+                    </button>
+                </div>
+            `;
+            const btnEmptyAdd = document.getElementById('btn-empty-add-stock');
+            if (btnEmptyAdd) {
+                btnEmptyAdd.addEventListener('click', () => {
+                    addStockModal.style.display = 'flex';
+                });
+            }
+            return;
+        }
+
+        // 3. 已登入且有股票時的篩選與渲染
         const filtered = STOCKS_DATA.filter(stock => {
             const matchSearch = stock.id.includes(state.searchTerm) || stock.name.toLowerCase().includes(state.searchTerm);
             if (!matchSearch) return false;
@@ -880,9 +958,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="stock-code-name">${stock.id} ${stock.name}</div>
                         <div class="stock-price-display">NT$ ${stock.price.toFixed(2)}</div>
                     </div>
-                    <button class="btn-star-fav ${isFav ? 'favorited' : ''}" data-id="${stock.id}" title="${isFav ? '移出自選' : '加入自選'}">
-                        <i class="fa-${isFav ? 'solid' : 'regular'} fa-star"></i>
-                    </button>
+                    <div style="display: flex; gap: 0.35rem; align-items: center;">
+                        <button class="btn-star-fav ${isFav ? 'favorited' : ''}" data-id="${stock.id}" title="${isFav ? '移出自選' : '加入自選'}">
+                            <i class="fa-${isFav ? 'solid' : 'regular'} fa-star"></i>
+                        </button>
+                        <button class="btn-star-fav btn-delete-stock" data-id="${stock.id}" title="從健檢庫刪除" style="color: #ef4444;">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
                 </div>
 
                 ${catBadge}
@@ -919,7 +1002,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
 
-            const starBtn = card.querySelector('.btn-star-fav');
+            // 自選星號按鈕
+            const starBtn = card.querySelector('.btn-star-fav:not(.btn-delete-stock)');
             starBtn.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 const client = getSupabaseClient();
@@ -938,6 +1022,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderStocks();
             });
 
+            // 刪除股票按鈕
+            const deleteBtn = card.querySelector('.btn-delete-stock');
+            deleteBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                if (!confirm(`確定要將 ${stock.id} ${stock.name} 從健檢資料庫刪除嗎？`)) return;
+                
+                STOCKS_DATA = STOCKS_DATA.filter(s => s.id !== stock.id);
+                state.watchlist.delete(stock.id);
+                localStorage.setItem('maybe_omni_watchlist', JSON.stringify([...state.watchlist]));
+
+                const client = getSupabaseClient();
+                if (client) {
+                    await client.from('stocks').delete().eq('stock_id', stock.id);
+                    await client.from('watchlist').delete().eq('stock_id', stock.id);
+                    await client.from('stock_prices').delete().eq('stock_id', stock.id);
+                }
+
+                renderStocks();
+            });
+
+            // 查看走勢圖按鈕
             const chartBtn = card.querySelector('.btn-view-chart');
             chartBtn.addEventListener('click', () => {
                 state.selectedStockForChart = stock;
