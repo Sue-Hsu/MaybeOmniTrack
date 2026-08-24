@@ -2277,7 +2277,7 @@ ${promptRules}
         if (missingDates.length > 0) {
             console.log(`🌐 [金價補充] 發現 Supabase 缺少 ${missingDates.length} 個交易日的金價，正在抓取並自動補齊...`);
             
-            let baseUsd = 2380.0;
+            let baseUsd = 4642.0;
             if (state.config.goldApiKey) {
                 try {
                     const res = await fetch("https://www.goldapi.io/api/XAU/USD", {
@@ -2326,7 +2326,7 @@ ${promptRules}
 
         state.cachedGoldList = list;
 
-        const lastItem = list.length > 0 ? list[list.length - 1] : { usd: 2385.60, twd: 2492.30 };
+        const lastItem = list.length > 0 ? list[list.length - 1] : { usd: 4642.36, twd: 4790.00 };
         goldUsdPrice.textContent = lastItem.usd.toFixed(2);
         goldTwdPrice.textContent = lastItem.twd.toFixed(2);
         if (goldTsinPrice) goldTsinPrice.textContent = (lastItem.twd * 3.75).toFixed(1);
@@ -2470,10 +2470,10 @@ ${promptRules}
     function generateMockGold(start, end) {
         const list = [];
         let cur = new Date(start); const endObj = new Date(end);
-        let u = 2360;
+        let u = 4635;
         while (cur <= endObj) {
             if (cur.getDay() !== 0 && cur.getDay() !== 6) {
-                u += (Math.random() - 0.48) * 15;
+                u += (Math.random() - 0.48) * 20;
                 list.push({ date: cur.toISOString().split('T')[0], usd: u, twd: (u * 32.5) / 31.1035 });
             }
             cur.setDate(cur.getDate() + 1);
