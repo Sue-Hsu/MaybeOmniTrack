@@ -405,6 +405,9 @@
                     <button class="secondary-btn" id="btn-refresh-all-stocks" style="white-space: nowrap; padding: 0.55rem 0.85rem; font-size: 0.85rem; border-radius: 8px; cursor: pointer;" title="一鍵同步所有股票最新收盤價">
                         <i class="fa-solid fa-arrows-rotate"></i> 更新最新股價
                     </button>
+                    <button class="primary-btn" id="btn-open-batch-stock-modal" style="white-space: nowrap; padding: 0.55rem 0.95rem; font-size: 0.85rem; background: linear-gradient(135deg, #6366f1, #4f46e5);" title="一次匯入多檔股票並由 AI 批次健檢">
+                        <i class="fa-solid fa-layer-group"></i> 批次匯入
+                    </button>
                     <button class="primary-btn" id="btn-open-add-stock-modal" style="white-space: nowrap; padding: 0.55rem 1rem; font-size: 0.85rem;">
                         <i class="fa-solid fa-plus"></i> 新增股票
                     </button>
@@ -420,6 +423,57 @@
         <footer>
             <p>MaybeOmniTrack © 2026 財務白癡救星 | 資料來源: FinMind, GoldAPI, Supabase, 台灣銀行</p>
         </footer>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 彈窗 0.5：批次匯入股票 Modal                -->
+    <!-- ========================================== -->
+    <div class="modal-overlay" id="batch-stock-modal" style="display: none;">
+        <div class="modal-card modal-md" style="max-width: 620px;">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-layer-group" style="color: #6366f1;"></i> 批次匯入股票（Gemini AI 智能健檢）</h3>
+                <button class="btn-close-modal" id="btn-close-batch-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="admin-notice" style="background: #eef2ff; border-color: #c7d2fe; color: #3730a3; margin-bottom: 1rem;">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    <span>輸入多檔股票代碼或名稱，系統將自動從 FinMind 抓取最新股價並由 Gemini AI 進行 5 大維度存股健檢後批量存入 Supabase！</span>
+                </div>
+
+                <!-- 快捷預設清單按鈕 -->
+                <div style="margin-bottom: 0.75rem;">
+                    <label style="font-size: 0.8rem; font-weight: 600; color: #64748b; margin-bottom: 0.35rem; display: block;">💡 點擊快速帶入熱門存股組合：</label>
+                    <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                        <button type="button" class="secondary-btn btn-preset-batch" data-preset="2886 兆豐金, 2892 第一金, 5880 合庫金, 2880 華南金" style="font-size: 0.75rem; padding: 0.25rem 0.6rem; border-radius: 6px; cursor: pointer;">🏛️ 官股四大金控</button>
+                        <button type="button" class="secondary-btn btn-preset-batch" data-preset="0050, 0056, 00878, 00919, 00929" style="font-size: 0.75rem; padding: 0.25rem 0.6rem; border-radius: 6px; cursor: pointer;">💰 人氣高股息與指數ETF</button>
+                        <button type="button" class="secondary-btn btn-preset-batch" data-preset="2330 台積電, 2412 中華電, 2308 台達電, 1216 統一" style="font-size: 0.75rem; padding: 0.25rem 0.6rem; border-radius: 6px; cursor: pointer;">🛡️ 產業護城河龍頭</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="batch-stock-input">請輸入股票代碼清單 (支援逗號、空格或換行)：</label>
+                    <textarea id="batch-stock-input" rows="5" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0.6rem; font-family: monospace; font-size: 0.85rem;" placeholder="例如：&#10;2886 兆豐金&#10;2892, 5880, 2412&#10;0056 元大高股息&#10;2330 台積電"></textarea>
+                </div>
+
+                <!-- 處理進度條與狀態 -->
+                <div id="batch-progress-box" style="display: none; flex-direction: column; gap: 0.5rem; margin-top: 0.75rem; background: #f8fafc; padding: 0.85rem; border-radius: 8px; border: 1px solid #e2e8f0;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem; font-weight: 600; color: #1e293b;">
+                        <span id="batch-progress-status"><i class="fa-solid fa-spinner fa-spin"></i> 正在處理中...</span>
+                        <span id="batch-progress-count">0 / 0</span>
+                    </div>
+                    <div style="width: 100%; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden;">
+                        <div id="batch-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #6366f1, #4f46e5); transition: width 0.3s;"></div>
+                    </div>
+                    <div id="batch-log-list" style="max-height: 140px; overflow-y: auto; font-size: 0.75rem; color: #475569; display: flex; flex-direction: column; gap: 0.25rem; font-family: monospace;"></div>
+                </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+                <button type="button" class="secondary-btn" id="btn-cancel-batch">關閉</button>
+                <button type="button" class="primary-btn" id="btn-start-batch-import" style="background: linear-gradient(135deg, #6366f1, #4f46e5); padding: 0.6rem 1.5rem;">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> 開始 AI 批次健檢與匯入
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- ========================================== -->

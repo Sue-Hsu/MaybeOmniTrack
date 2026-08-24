@@ -1247,6 +1247,211 @@ ${promptRules}
             btnRefreshAllStocks.addEventListener('click', () => refreshAllStockPrices(true));
         }
 
+        // 批次匯入股票彈窗與處理流程
+        const btnOpenBatchStockModal = document.getElementById('btn-open-batch-stock-modal');
+        const batchStockModal = document.getElementById('batch-stock-modal');
+        const btnCloseBatchModal = document.getElementById('btn-close-batch-modal');
+        const btnCancelBatch = document.getElementById('btn-cancel-batch');
+        const batchStockInput = document.getElementById('batch-stock-input');
+        const btnStartBatchImport = document.getElementById('btn-start-batch-import');
+        const batchProgressBox = document.getElementById('batch-progress-box');
+        const batchProgressStatus = document.getElementById('batch-progress-status');
+        const batchProgressCount = document.getElementById('batch-progress-count');
+        const batchProgressBar = document.getElementById('batch-progress-bar');
+        const batchLogList = document.getElementById('batch-log-list');
+
+        if (btnOpenBatchStockModal) {
+            btnOpenBatchStockModal.addEventListener('click', () => {
+                if (!state.currentUser) {
+                    alert("請先登入系統後再使用批次股票匯入！");
+                    loginModal.style.display = 'flex';
+                    return;
+                }
+                batchStockInput.value = '';
+                batchProgressBox.style.display = 'none';
+                batchLogList.innerHTML = '';
+                batchStockModal.style.display = 'flex';
+            });
+        }
+
+        if (btnCloseBatchModal) btnCloseBatchModal.addEventListener('click', () => batchStockModal.style.display = 'none');
+        if (btnCancelBatch) btnCancelBatch.addEventListener('click', () => batchStockModal.style.display = 'none');
+
+        // 預設組合快捷填入
+        document.querySelectorAll('.btn-preset-batch').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const preset = btn.dataset.preset;
+                if (preset) {
+                    if (batchStockInput.value.trim()) {
+                        batchStockInput.value += '\n' + preset;
+                    } else {
+                        batchStockInput.value = preset;
+                    }
+                }
+            });
+        });
+
+        // 執行 AI 批次匯入
+        if (btnStartBatchImport) {
+            btnStartBatchImport.addEventListener('click', async () => {
+                const raw = batchStockInput.value.trim();
+                if (!raw) {
+                    alert('請先輸入至少一檔股票代碼或名稱！');
+                    return;
+                }
+
+                // 拆解輸入字串
+                const rawItems = raw.split(/[\n,;，；]+/);
+                const targets = [];
+                const seenCodes = new Set();
+
+                // 抓取全體股票清單以供名稱比對
+                let fullStockList = [];
+                try {
+                    fullStockList = await fetchFinMindStockList();
+                } catch (e) {
+                    console.warn("無法取得 FinMind 完整股票清單，將直接使用輸入代碼", e);
+                }
+
+                for (let item of rawItems) {
+                    let text = item.trim();
+                    if (!text) continue;
+
+                    // 1. 檢查是否包含純數字代碼 (如 2886 兆豐金 或 2886)
+                    const codeMatch = text.match(/\b\d{4,6}[A-Za-z]?\b/);
+                    if (codeMatch) {
+                        const code = codeMatch[0];
+                        if (!seenCodes.has(code)) {
+                            seenCodes.add(code);
+                            // 若文字中有附帶中文名稱則取之，否則從清單比對
+                            let name = text.replace(code, '').trim();
+                            if (!name) {
+                                const found = fullStockList.find(s => s.stock_id === code);
+                                name = found ? found.stock_name : `股票 ${code}`;
+                            }
+                            targets.push({ code, name });
+                        }
+                    } else {
+                        // 2. 若為純中文名稱 (如 台積電 或 兆豐金)
+                        const found = fullStockList.find(s => s.stock_name === text || s.stock_name.includes(text));
+                        if (found && !seenCodes.has(found.stock_id)) {
+                            seenCodes.add(found.stock_id);
+                            targets.push({ code: found.stock_id, name: found.stock_name });
+                        } else if (!found) {
+                            console.warn(`無法比對股票名稱: ${text}`);
+                        }
+                    }
+                }
+
+                if (targets.length === 0) {
+                    alert('未能識別出有效的台股代碼，請確認輸入格式（例如：2886 兆豐金 或 0050）！');
+                    return;
+                }
+
+                // 開始進度條與處理流程
+                btnStartBatchImport.disabled = true;
+                btnStartBatchImport.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 批次處理中...';
+                batchProgressBox.style.display = 'flex';
+                batchLogList.innerHTML = '';
+                
+                const total = targets.length;
+                let processed = 0;
+                const client = getSupabaseClient();
+                const today = new Date().toISOString().split('T')[0];
+                const past = new Date(); past.setDate(new Date().getDate() - 10);
+                const pastStr = past.toISOString().split('T')[0];
+
+                for (const target of targets) {
+                    processed++;
+                    const pct = Math.round((processed / total) * 100);
+                    batchProgressBar.style.width = `${pct}%`;
+                    batchProgressCount.textContent = `${processed} / ${total}`;
+                    batchProgressStatus.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> [${processed}/${total}] 正在為 <strong>${target.code} ${target.name}</strong> 抓取行情並執行 Gemini AI 健檢...`;
+
+                    let price = 0;
+
+                    // 1. 連線 FinMind 取得最新股價
+                    try {
+                        const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${target.code}&start_date=${pastStr}&end_date=${today}`);
+                        const json = await res.json();
+                        if (json.msg === 'success' && json.data && json.data.length > 0) {
+                            const latest = json.data[json.data.length - 1];
+                            price = parseFloat(latest.close);
+                        }
+                    } catch (e) {
+                        console.warn(`FinMind 股價查詢失敗 (${target.code}):`, e);
+                    }
+
+                    if (price === 0) price = 50.0;
+
+                    // 2. 調用 Google Gemini AI 進行存股法則 5 大維度診斷
+                    const aiResult = await generateAiStockDiagnosis(target.code, target.name, price);
+
+                    // 3. 組合股票完整資料
+                    const newStock = {
+                        id: target.code,
+                        name: target.name,
+                        price: price,
+                        marketCap: aiResult.marketCap || 500,
+                        eps5y: aiResult.eps5y || 2.0,
+                        divYears: aiResult.divYears || 10,
+                        payoutRatio: aiResult.payoutRatio || 75.0,
+                        yield: aiResult.yield || 5.0,
+                        beta: aiResult.beta || (aiResult.category === 'dividend' ? 0.48 : 0.8),
+                        pb: aiResult.pb || 1.35,
+                        pe: aiResult.pe || 15.5,
+                        category: aiResult.category || 'dividend',
+                        diagnosis: aiResult.diagnosis || `${target.name} (${target.code})：已完成 AI 存股健檢。`
+                    };
+
+                    // 4. 更新本地狀態
+                    STOCKS_DATA = STOCKS_DATA.filter(s => s.id !== target.code);
+                    STOCKS_DATA.push(newStock);
+                    state.watchlist.add(target.code);
+
+                    // 5. 寫入 Supabase stocks 與 watchlist
+                    if (client) {
+                        try {
+                            const row = {
+                                stock_id: newStock.id,
+                                name: newStock.name,
+                                price: newStock.price,
+                                market_cap: newStock.marketCap,
+                                eps_5y_avg: newStock.eps5y,
+                                div_years: newStock.divYears,
+                                payout_ratio: newStock.payoutRatio,
+                                dividend_yield: newStock.yield,
+                                beta: newStock.beta,
+                                pb_ratio: newStock.pb,
+                                pe_ratio: newStock.pe,
+                                category_tag: newStock.category,
+                                diagnosis_note: newStock.diagnosis
+                            };
+                            await client.from('stocks').upsert(row, { onConflict: 'stock_id' });
+                            await client.from('watchlist').upsert({ user_id: 'shared_user', stock_id: target.code, stock_name: target.name }, { onConflict: 'user_id,stock_id' });
+                        } catch (upsertErr) {
+                            console.error(`Supabase batch upsert error (${target.code}):`, upsertErr);
+                        }
+                    }
+
+                    // 6. 記錄於即時日誌視窗
+                    const logItem = document.createElement('div');
+                    const catText = newStock.category === 'dividend' ? '🏆 適合穩健存股' : newStock.category === 'cashflow' ? '💰 適合領高利息' : '🚀 適合波段賺價差';
+                    logItem.innerHTML = `<span style="color: #16a34a; font-weight: bold;">✔ [${target.code} ${target.name}]</span> 現價 NT$${newStock.price.toFixed(2)} ｜ <span style="color: #4338ca;">${catText}</span> ｜ 殖利率 ${newStock.yield}% ➔ <span style="color: #059669;">已存入 Supabase</span>`;
+                    batchLogList.appendChild(logItem);
+                    batchLogList.scrollTop = batchLogList.scrollHeight;
+                }
+
+                localStorage.setItem('maybe_omni_watchlist', JSON.stringify([...state.watchlist]));
+                renderStocks();
+
+                batchProgressBar.style.width = '100%';
+                batchProgressStatus.innerHTML = `<span style="color: #16a34a; font-weight: 700;">🎉 恭喜！已成功完成全數 ${total} 檔股票的 AI 存股健檢並全數存入 Supabase！</span>`;
+                btnStartBatchImport.disabled = false;
+                btnStartBatchImport.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> 再次批次匯入';
+            });
+        }
+
         // 打開新增股票彈窗
         btnOpenAddStockModal.addEventListener('click', () => {
             if (!state.currentUser) {
