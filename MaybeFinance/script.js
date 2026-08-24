@@ -2690,7 +2690,19 @@ ${promptRules}
             }
         }
 
-        // 3. 提取年份數字
+        // 3. 判斷是否有月份 (例如 113年05月、113/05、5月、05月、2024-05)
+        let month = null;
+        if (!quarter && !half) {
+            const mMatch = str.match(/(?:年|\/|\-)?\s*(\d{1,2})\s*月/) || str.match(/[\/\-](\d{1,2})$/);
+            if (mMatch) {
+                const mVal = parseInt(mMatch[1], 10);
+                if (mVal >= 1 && mVal <= 12) {
+                    month = String(mVal).padStart(2, '0');
+                }
+            }
+        }
+
+        // 4. 提取年份數字
         let yearNum = null;
         const numMatch = str.match(/(\d{2,4})/);
         if (numMatch) {
@@ -2705,11 +2717,13 @@ ${promptRules}
         // 若為民國年 (小於 1900，例如 114, 113, 112, 98)，一律轉為西元年 (西元 = 民國 + 1911)
         const adYear = yearNum < 1900 ? yearNum + 1911 : yearNum;
 
-        // 組合標準西元年格式 (例如 2025Q4、2026H1、2025年)
+        // 組合標準西元年格式 (例如 2025Q4、2026H1、2012/05、2025年)
         if (quarter) {
             return `${adYear}Q${quarter}`;
         } else if (half) {
             return `${adYear}H${half}`;
+        } else if (month) {
+            return `${adYear}/${month}`;
         } else {
             return `${adYear}年`;
         }
@@ -2718,28 +2732,33 @@ ${promptRules}
     function calculateAnnualCashDividend(dividendList) {
         if (!dividendList || dividendList.length === 0) return 0;
 
-        // 判斷是否為季配息 / 半年配 / 月配息
+        // 判斷是否為月配息 / 季配息 / 半年配
         const yearCountMap = {};
-        let isMultiPeriod = false;
+        let isMonthly = false;
+        let isQuarterly = false;
+        let isHalfYear = false;
 
         dividendList.forEach(item => {
             const formattedYr = formatDividendYear(item.year, item.payment_date, item.ex_dividend_date);
-            if (formattedYr.includes('Q') || formattedYr.includes('H') || formattedYr.includes('月')) {
-                isMultiPeriod = true;
+            if (formattedYr.includes('/')) {
+                isMonthly = true;
+            } else if (formattedYr.includes('Q')) {
+                isQuarterly = true;
+            } else if (formattedYr.includes('H')) {
+                isHalfYear = true;
             }
             const yKey = formattedYr.slice(0, 4);
             if (yKey) {
                 yearCountMap[yKey] = (yearCountMap[yKey] || 0) + 1;
-                if (yearCountMap[yKey] > 1) {
-                    isMultiPeriod = true;
-                }
             }
         });
 
+        const isMultiPeriod = isMonthly || isQuarterly || isHalfYear || Object.values(yearCountMap).some(c => c > 1);
+
         if (isMultiPeriod) {
-            // 季配／半年配／月配息（如台積電 2330、富邦台50 006208、00878、00919、00929）：
-            // 加總最新 4 季（或近 1 年的所有配息）作為近 1 年年化現金股利
-            const periodsToSum = Math.min(dividendList.length, 4);
+            // 月配息取最新 12 個月加總、季配息取最新 4 季、半年配取最新 2 次
+            const maxPeriods = isMonthly ? 12 : (isQuarterly ? 4 : (isHalfYear ? 2 : 4));
+            const periodsToSum = Math.min(dividendList.length, maxPeriods);
             const sumLatestPeriods = dividendList.slice(0, periodsToSum).reduce((sum, r) => sum + (parseFloat(r.cash_dividend) || 0), 0);
             return sumLatestPeriods;
         } else {
