@@ -2732,6 +2732,7 @@ ${promptRules}
         let dividendList = [];
         let hitSupabase = false;
         let latestAnnYear = null;
+        let oldestAnnYear = null;
         const currentYear = new Date().getFullYear();
 
         // 1. Supabase 快取優先查詢並 0 秒立刻渲染
@@ -2746,15 +2747,16 @@ ${promptRules}
                 if (dbDividends && !error && dbDividends.length > 0) {
                     dividendList = dbDividends;
                     hitSupabase = true;
-                    // 取得 DB 中最新的公告年份或除息年份
+                    // 取得 DB 中最新與最舊的公告年份或除息年份
                     for (const d of dbDividends) {
                         const yrMatch = (d.announcement_date || d.ex_dividend_date || d.year || '').match(/(\d{4})/);
                         if (yrMatch) {
-                            latestAnnYear = parseInt(yrMatch[1], 10);
-                            break;
+                            const yr = parseInt(yrMatch[1], 10);
+                            if (!latestAnnYear || yr > latestAnnYear) latestAnnYear = yr;
+                            if (!oldestAnnYear || yr < oldestAnnYear) oldestAnnYear = yr;
                         }
                     }
-                    console.log(`⚡ [Supabase 命中] 成功從 Supabase 載入 ${stock.name} ${dividendList.length} 筆歷年配息紀錄 (最新年份: ${latestAnnYear || '未知'})！`);
+                    console.log(`⚡ [Supabase 命中] 成功從 Supabase 載入 ${stock.name} ${dividendList.length} 筆歷年配息紀錄 (範圍: ${oldestAnnYear || '未知'} ~ ${latestAnnYear || '未知'})！`);
                     
                     // 立刻渲染現有配息列表，0 秒無感延遲
                     renderDividendUI(dividendList, stock);
@@ -2764,14 +2766,19 @@ ${promptRules}
             }
         }
 
-        // 2. 智慧增量與缺漏偵測：
+        // 2. 智慧增量與缺漏雙向偵測 (向下歷史深度補齊 + 向上最新決議補齊)：
         // - 若完全無資料 ➔ 抓取 2000-01-01 至今 25 年完整全歷史
-        // - 若有資料但最新年份落後當前年份 (例如 latestAnnYear < currentYear) ➔ 只補齊近 1~2 年
-        // - 若已有資料且已是最新年份 ➔ 不發送 API 請求
+        // - 若歷史深度不完整 (最舊年份 > 2012 且總筆數 < 15 筆) ➔ 向下補齊 2000-01-01 至今全歷史
+        // - 若最新年份落後當前年份 (例如 latestAnnYear < currentYear) ➔ 向上補齊近 1~2 年
+        // - 若已深度完整且是最新年份 ➔ 不發送 API 請求
         let needFetch = false;
         let fetchStartDate = '2000-01-01';
 
         if (!hitSupabase || dividendList.length === 0) {
+            needFetch = true;
+            fetchStartDate = '2000-01-01';
+        } else if (oldestAnnYear && oldestAnnYear > 2012 && dividendList.length < 15) {
+            // 抓到像 006208 這種先前只有 2023~2026 的情況，立即向下自動補齊全歷史！
             needFetch = true;
             fetchStartDate = '2000-01-01';
         } else if (latestAnnYear && latestAnnYear < currentYear) {
