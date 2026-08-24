@@ -600,17 +600,7 @@ document.addEventListener('DOMContentLoaded', () => {
             adminSupabaseKey.value = state.config.supabaseKey;
             adminGoldKey.value = state.config.goldApiKey;
             if (adminGeminiKey) adminGeminiKey.value = state.config.geminiApiKey || '';
-            const targetModel = state.config.geminiModel || 'gemini-3.7-flash';
-            if (adminGeminiModel) {
-                let opt = adminGeminiModel.querySelector(`option[value="${targetModel}"]`);
-                if (!opt) {
-                    opt = document.createElement('option');
-                    opt.value = targetModel;
-                    opt.textContent = `⚡ ${targetModel}`;
-                    adminGeminiModel.appendChild(opt);
-                }
-                adminGeminiModel.value = targetModel;
-            }
+            if (adminGeminiModel) adminGeminiModel.value = state.config.geminiModel || 'gemini-3.6-flash';
             if (adminGeminiPrompt) adminGeminiPrompt.value = state.config.geminiPrompt || STOCK_RULES_KNOWLEDGE;
             adminGoogleClientId.value = state.config.googleClientId;
             adminGoogleEmails.value = state.config.adminGoogleEmails;
@@ -959,78 +949,6 @@ document.addEventListener('DOMContentLoaded', () => {
             loadAdminUsersList();
         } catch (e) {
             alert("刪除失敗：" + e.message);
-        }
-    }
-
-    // 連線 Google AI Studio 抓取支援 generateContent 的可用模型清單
-    async function fetchAvailableGeminiModels(showPrompt = false) {
-        const apiKey = (adminGeminiKey && adminGeminiKey.value.trim()) || state.config.geminiApiKey;
-        if (!apiKey) {
-            if (showPrompt) alert("請先填入 Google AI Studio (Gemini) API Key 才能讀取模型清單！");
-            return;
-        }
-
-        if (geminiModelLoadStatus) {
-            geminiModelLoadStatus.style.display = 'block';
-            geminiModelLoadStatus.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在向 Google AI Studio 讀取模型清單...';
-        }
-
-        try {
-            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
-
-            // 過濾支援 generateContent 的模型
-            const models = (data.models || []).filter(m => {
-                const isGen = m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent');
-                const name = m.name || '';
-                return isGen && !name.includes('embedding') && !name.includes('aqa') && !name.includes('imagen') && !name.includes('tts');
-            });
-
-            if (models.length > 0 && adminGeminiModel) {
-                // 優先排序 3.7 / 2.5 / 2.0 / 1.5
-                models.sort((a, b) => {
-                    const aName = a.name.toLowerCase();
-                    const bName = b.name.toLowerCase();
-                    const getScore = (n) => {
-                        if (n.includes('3.7') && n.includes('flash')) return 1;
-                        if (n.includes('3.7')) return 2;
-                        if (n.includes('2.5') && n.includes('flash')) return 3;
-                        if (n.includes('2.0') && n.includes('flash')) return 4;
-                        if (n.includes('1.5') && n.includes('flash')) return 5;
-                        if (n.includes('flash')) return 6;
-                        if (n.includes('pro')) return 7;
-                        return 10;
-                    };
-                    return getScore(aName) - getScore(bName);
-                });
-
-                const currentSelection = state.config.geminiModel || 'gemini-3.7-flash';
-                adminGeminiModel.innerHTML = '';
-
-                models.forEach(m => {
-                    const cleanName = m.name.replace(/^models\//, '');
-                    const isFlash = cleanName.toLowerCase().includes('flash');
-                    const opt = document.createElement('option');
-                    opt.value = cleanName;
-                    opt.textContent = `${isFlash ? '⚡ [高速] ' : '🧠 [深度] '} ${m.displayName || cleanName} (${cleanName})`;
-                    if (cleanName === currentSelection) opt.selected = true;
-                    adminGeminiModel.appendChild(opt);
-                });
-
-                adminGeminiModel.value = currentSelection;
-
-                if (geminiModelLoadStatus) {
-                    geminiModelLoadStatus.innerHTML = `✅ 成功讀取 ${models.length} 個可用 Gemini 模型！`;
-                }
-                if (showPrompt) alert(`🎉 成功從 Google AI Studio 讀取到 ${models.length} 個可用模型！請在下拉選單中挑選。`);
-            }
-        } catch (err) {
-            console.warn("Gemini list models failed:", err);
-            if (geminiModelLoadStatus) {
-                geminiModelLoadStatus.innerHTML = `⚠️ 無法連線讀取清單，將使用預設模型選單。`;
-            }
-            if (showPrompt) alert("讀取模型清單失敗，請確認 API Key 是否正確。");
         }
     }
 
