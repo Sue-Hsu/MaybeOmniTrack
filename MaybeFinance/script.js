@@ -2119,18 +2119,20 @@ ${promptRules}
                     const latest = json.data[json.data.length - 1];
                     stock.price = parseFloat(latest.close);
                     
-                    // 優先採用真實最新配息計算即時現金殖利率，避免 fallback EPS 偏差
+                    // 優先採用真實最新全年/近4季配息累計計算即時現金殖利率
                     let calculatedYield = stock.yield;
                     if (client) {
                         try {
                             const { data: divRows } = await client
                                 .from('stock_dividends')
-                                .select('cash_dividend')
+                                .select('cash_dividend, year, announcement_date')
                                 .eq('stock_id', stock.id)
-                                .order('announcement_date', { ascending: false })
-                                .limit(1);
-                            if (divRows && divRows.length > 0 && divRows[0].cash_dividend > 0 && stock.price > 0) {
-                                calculatedYield = parseFloat(((parseFloat(divRows[0].cash_dividend) / stock.price) * 100).toFixed(2));
+                                .order('announcement_date', { ascending: false });
+                            if (divRows && divRows.length > 0 && stock.price > 0) {
+                                const annualCash = calculateAnnualCashDividend(divRows);
+                                if (annualCash > 0) {
+                                    calculatedYield = parseFloat(((annualCash / stock.price) * 100).toFixed(2));
+                                }
                             }
                         } catch (divErr) {
                             console.warn("Real dividend fetch for yield calculation fallback", divErr);
@@ -2641,8 +2643,47 @@ ${promptRules}
             }
         }
 
-        // 4. 渲染配息表格與統計指標
+        // 4. 計算全年/近4季年化現金股利並校正當前股票現金殖利率
+        if (dividendList && dividendList.length > 0 && stock && stock.price > 0) {
+            const annualCash = calculateAnnualCashDividend(dividendList);
+            if (annualCash > 0) {
+                const accurateYield = parseFloat(((annualCash / stock.price) * 100).toFixed(2));
+                if (accurateYield && stock.yield !== accurateYield) {
+                    stock.yield = accurateYield;
+                    if (client) {
+                        client.from('stocks').update({
+                            dividend_yield: accurateYield,
+                            updated_at: new Date()
+                        }).eq('stock_id', stock.id).then(() => {}).catch(() => {});
+                    }
+                    renderStocks();
+                }
+            }
+        }
+
+        // 5. 渲染配息表格與統計指標
         renderDividendUI(dividendList, stock);
+    }
+
+    function calculateAnnualCashDividend(dividendList) {
+        if (!dividendList || dividendList.length === 0) return 0;
+        const yearCashMap = {};
+        dividendList.forEach(item => {
+            const yr = (item.year || '').trim();
+            const yKey = yr.slice(0, 4);
+            if (yKey) {
+                yearCashMap[yKey] = (yearCashMap[yKey] || 0) + (parseFloat(item.cash_dividend) || 0);
+            }
+        });
+        const yearlyVals = Object.values(yearCashMap);
+        let annualCash = yearlyVals.length > 0 ? yearlyVals[0] : 0;
+        if (dividendList.length >= 4) {
+            const sumLatest4 = dividendList.slice(0, 4).reduce((sum, r) => sum + (parseFloat(r.cash_dividend) || 0), 0);
+            if (sumLatest4 > annualCash && annualCash < parseFloat(dividendList[0].cash_dividend) * 2) {
+                annualCash = sumLatest4;
+            }
+        }
+        return annualCash > 0 ? annualCash : (parseFloat(dividendList[0].cash_dividend) || 0);
     }
 
     function renderDividendUI(list, stock) {
