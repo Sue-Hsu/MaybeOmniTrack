@@ -2220,12 +2220,12 @@ ${promptRules}
                     '2886': { marketCap: 1440.0, eps5y: 1.95, divYears: 12, payoutRatio: 82.0, beta: 0.45 },
                     '5880': { marketCap: 1510.0, eps5y: 1.35, divYears: 14, payoutRatio: 78.0, beta: 0.48 },
                     '2002': { marketCap: 1577.0, eps5y: 1.10, divYears: 15, payoutRatio: 85.0, beta: 0.65 },
-                    '00878': { marketCap: 3150.0, eps5y: 1.60, divYears: 6, payoutRatio: 90.0, beta: 0.72 },
-                    '006208': { marketCap: 1850.0, eps5y: 6.20, divYears: 6, payoutRatio: 90.0, beta: 0.98 },
-                    '0050': { marketCap: 4200.0, eps5y: 7.50, divYears: 10, payoutRatio: 90.0, beta: 1.0 },
-                    '0056': { marketCap: 3200.0, eps5y: 2.80, divYears: 13, payoutRatio: 90.0, beta: 0.75 },
-                    '00919': { marketCap: 2700.0, eps5y: 2.20, divYears: 4, payoutRatio: 90.0, beta: 0.75 },
-                    '00929': { marketCap: 2800.0, eps5y: 1.90, divYears: 3, payoutRatio: 90.0, beta: 0.75 }
+                    '00878': { marketCap: 6150.0, eps5y: 1.60, divYears: 6, payoutRatio: 90.0, beta: 0.72 },
+                    '006208': { marketCap: 2150.0, eps5y: 6.20, divYears: 6, payoutRatio: 90.0, beta: 0.98 },
+                    '0050': { marketCap: 4350.0, eps5y: 7.50, divYears: 10, payoutRatio: 90.0, beta: 1.0 },
+                    '0056': { marketCap: 3680.0, eps5y: 2.80, divYears: 13, payoutRatio: 90.0, beta: 0.75 },
+                    '00919': { marketCap: 3200.0, eps5y: 2.20, divYears: 4, payoutRatio: 90.0, beta: 0.75 },
+                    '00929': { marketCap: 2900.0, eps5y: 1.90, divYears: 3, payoutRatio: 90.0, beta: 0.75 }
                 };
 
                 if (KNOWN_FUNDAMENTALS[stock.id]) {
