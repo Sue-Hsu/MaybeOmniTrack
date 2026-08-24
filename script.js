@@ -954,18 +954,41 @@ ${promptRules}
             addStockDiagnosisInput.value = '正在連線 FinMind 抓取數據並由 Google Gemini AI 進行存股法則深度健檢...';
 
             let price = 0;
-            try {
-                const today = new Date().toISOString().split('T')[0];
-                const past = new Date(); past.setDate(new Date().getDate() - 30);
-                const pastStr = past.toISOString().split('T')[0];
-                const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${code}&start_date=${pastStr}&end_date=${today}`);
-                const json = await res.json();
-                if (json.msg === 'success' && json.data && json.data.length > 0) {
-                    const latest = json.data[json.data.length - 1];
-                    price = latest.close;
+            const client = getSupabaseClient();
+
+            // 優先查詢 Supabase stock_prices 是否有最新股價
+            if (client) {
+                try {
+                    const { data: latestDbPrice } = await client
+                        .from('stock_prices')
+                        .select('close_price')
+                        .eq('stock_id', code)
+                        .order('trade_date', { ascending: false })
+                        .limit(1);
+                    if (latestDbPrice && latestDbPrice.length > 0 && latestDbPrice[0].close_price) {
+                        price = parseFloat(latestDbPrice[0].close_price);
+                        console.log(`⚡ [Supabase 命中] 成功從 Supabase 讀取 ${code} 最新收盤價 NT$ ${price}`);
+                    }
+                } catch (dbErr) {
+                    console.warn("Supabase price query error:", dbErr);
                 }
-            } catch (e) {
-                console.warn("FinMind price fallback", e);
+            }
+
+            // 若 Supabase 尚無股價資料，連線 FinMind 抓取
+            if (!price) {
+                try {
+                    const today = new Date().toISOString().split('T')[0];
+                    const past = new Date(); past.setDate(new Date().getDate() - 30);
+                    const pastStr = past.toISOString().split('T')[0];
+                    const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${code}&start_date=${pastStr}&end_date=${today}`);
+                    const json = await res.json();
+                    if (json.msg === 'success' && json.data && json.data.length > 0) {
+                        const latest = json.data[json.data.length - 1];
+                        price = latest.close;
+                    }
+                } catch (e) {
+                    console.warn("FinMind price fallback", e);
+                }
             }
 
             if (price === 0) price = 35.0;
