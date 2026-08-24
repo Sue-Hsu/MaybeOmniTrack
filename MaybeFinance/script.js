@@ -1111,6 +1111,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function checkGeminiQuota(showPrompt = false) {
+        loadGeminiUsage();
         const adminGeminiKey = document.getElementById('admin-gemini-key');
         const apiKey = (adminGeminiKey && adminGeminiKey.value.trim()) || state.config.geminiApiKey;
         const adminResult = document.getElementById('gemini-quota-admin-result');
