@@ -526,16 +526,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     .eq('email', userEmail)
                     .limit(1);
 
-                if (error && error.code === '42P01') {
-                    // 表格尚未建立，先提示管理員建立
-                    alert("⚠️ Supabase 尚未建立 app_users 資料表！請管理員至後台複製 SQL 建立表格。");
-                    return;
+                if (error) {
+                    if (error.code === '42P01') {
+                        alert("⚠️ Supabase 尚未建立 app_users 資料表！請管理員至後台複製 SQL 建立表格。");
+                        return;
+                    }
+                    console.error("Query app_users error:", error);
                 }
 
                 if (!userRows || userRows.length === 0) {
                     // 首次申請：建立 pending 待審核紀錄
                     const nowIso = new Date().toISOString();
-                    await client.from('app_users').insert({
+                    const { error: insErr } = await client.from('app_users').upsert({
                         email: userEmail,
                         name: userName,
                         role: 'user',
@@ -544,7 +546,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         note: '新 Google 用戶註冊申請',
                         created_at: nowIso,
                         updated_at: nowIso
-                    });
+                    }, { onConflict: 'email' });
+
+                    if (insErr) {
+                        console.error("Supabase app_users insert error:", insErr);
+                        alert(`❌ 送出註冊審核申請失敗：${insErr.message}\n請確認 Supabase app_users 的 RLS 開放寫入權限。`);
+                        return;
+                    }
+
                     loginModal.style.display = 'none';
                     alert(`⏳ 您的帳號 (${userEmail}) 已成功送出註冊審核申請！\n\n目前狀態為「🟡 待審核」，請等待系統管理員放行後即可登入使用。`);
                     return;
@@ -554,7 +563,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (userRecord.status === 'approved') {
                     // 已放行，允許登入
                     await client.from('app_users').update({ updated_at: new Date().toISOString() }).eq('email', userEmail);
-                    setLoggedInUser({ name: `${userRecord.name || userName} (Google)`, email: userEmail, role: 'user' });
+                    setLoggedInUser({ name: `${userRecord.name || userName} (Google)`, email: userEmail, role: userRecord.role || 'user' });
                     loginModal.style.display = 'none';
                     alert(`👋 歡迎 ${userName}！您的帳號已審核通過，全站匯率、金價與股票功能已解鎖。`);
                 } else if (userRecord.status === 'pending') {
@@ -569,7 +578,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert("用戶審核驗證時發生錯誤：" + err.message);
             }
         } else {
-            alert("⚠️ 系統尚未連線 Supabase 資料庫，無法驗證用戶權限。請聯繫管理員確認設定。");
+            alert("⚠️ 尚未連線至 Supabase 資料庫，請聯繫系統管理員完成連線設定！");
         }
     }
 
@@ -887,22 +896,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td><span style="color: #64748b; font-size: 0.75rem;">${u.provider || 'google'}</span></td>
                     <td style="color: #64748b; font-size: 0.75rem;">${createdStr}</td>
                     <td>
-                        <span class="user-note-text" style="cursor: pointer; color: #2563eb;" title="點擊編輯備註" data-id="${u.id}" data-note="${u.note || ''}">
+                        <span class="user-note-text" style="cursor: pointer; color: #2563eb;" title="點擊編輯備註" data-id="${u.id || ''}" data-email="${u.email}" data-note="${u.note || ''}">
                             ${u.note ? u.note : '<em style="color: #94a3b8;">+ 點此加備註</em>'}
                         </span>
                     </td>
                     <td>
                         <div style="display: flex; gap: 0.25rem;">
                             ${u.status !== 'approved' ? `
-                                <button type="button" class="btn-action-user btn-action-approve" data-id="${u.id}" data-email="${u.email}" title="核准放行">
+                                <button type="button" class="btn-action-user btn-action-approve" data-id="${u.id || ''}" data-email="${u.email}" title="核准放行">
                                     <i class="fa-solid fa-check"></i> 放行
                                 </button>
                             ` : `
-                                <button type="button" class="btn-action-user btn-action-reject" data-id="${u.id}" data-email="${u.email}" title="停用訪問">
+                                <button type="button" class="btn-action-user btn-action-reject" data-id="${u.id || ''}" data-email="${u.email}" title="停用訪問">
                                     <i class="fa-solid fa-ban"></i> 停用
                                 </button>
                             `}
-                            <button type="button" class="btn-action-user btn-action-del" data-id="${u.id}" data-email="${u.email}" title="刪除紀錄">
+                            <button type="button" class="btn-action-user btn-action-del" data-id="${u.id || ''}" data-email="${u.email}" title="刪除紀錄">
                                 <i class="fa-solid fa-trash-can"></i>
                             </button>
                         </div>
@@ -922,7 +931,7 @@ document.addEventListener('DOMContentLoaded', () => {
             b.addEventListener('click', () => deleteAdminUser(b.dataset.id, b.dataset.email));
         });
         tbody.querySelectorAll('.user-note-text').forEach(n => {
-            n.addEventListener('click', () => updateAdminUserNote(n.dataset.id, n.dataset.note));
+            n.addEventListener('click', () => updateAdminUserNote(n.dataset.id, n.dataset.note, n.dataset.email));
         });
     }
 
@@ -930,11 +939,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const client = getSupabaseClient();
         if (!client) return;
         try {
-            const { error } = await client
-                .from('app_users')
-                .update({ status: newStatus, updated_at: new Date().toISOString() })
-                .eq('id', id);
-
+            let query = client.from('app_users').update({ status: newStatus, updated_at: new Date().toISOString() });
+            if (email) {
+                query = query.eq('email', email);
+            } else if (id) {
+                query = query.eq('id', id);
+            }
+            const { error } = await query;
             if (error) throw error;
             console.log(`✅ 用戶 ${email} 狀態已變更為 ${newStatus}`);
             loadAdminUsersList();
@@ -943,16 +954,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function updateAdminUserNote(id, currentNote) {
+    async function updateAdminUserNote(id, currentNote, email) {
         const newNote = prompt("請輸入此用戶的管理員備註：", currentNote || '');
         if (newNote === null) return;
         const client = getSupabaseClient();
         if (!client) return;
         try {
-            const { error } = await client
-                .from('app_users')
-                .update({ note: newNote.trim(), updated_at: new Date().toISOString() })
-                .eq('id', id);
+            let query = client.from('app_users').update({ note: newNote.trim(), updated_at: new Date().toISOString() });
+            if (email) {
+                query = query.eq('email', email);
+            } else if (id) {
+                query = query.eq('id', id);
+            }
+            const { error } = await query;
             if (error) throw error;
             loadAdminUsersList();
         } catch (e) {
@@ -965,7 +979,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const client = getSupabaseClient();
         if (!client) return;
         try {
-            const { error } = await client.from('app_users').delete().eq('id', id);
+            let query = client.from('app_users').delete();
+            if (email) {
+                query = query.eq('email', email);
+            } else if (id) {
+                query = query.eq('id', id);
+            }
+            const { error } = await query;
             if (error) throw error;
             loadAdminUsersList();
         } catch (e) {
