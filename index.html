@@ -25,10 +25,13 @@
                 <p class="tagline">財務白癡救星：不用懂複雜財報，告訴你該不該買！</p>
             </div>
 
-            <!-- 主分頁導覽 -->
+            <!-- 主分頁導覽 (三個獨立頁籤) -->
             <nav class="nav-tabs">
-                <button class="nav-tab active" id="tab-fx-gold" data-target="view-fx-gold">
-                    <i class="fa-solid fa-coins"></i> 匯率與金價
+                <button class="nav-tab active" id="tab-fx" data-target="view-fx">
+                    <i class="fa-solid fa-money-bill-transfer"></i> 外幣匯率
+                </button>
+                <button class="nav-tab" id="tab-gold" data-target="view-gold">
+                    <i class="fa-solid fa-coins"></i> 黃金牌告
                 </button>
                 <button class="nav-tab" id="tab-stocks" data-target="view-stocks">
                     <i class="fa-solid fa-arrow-trend-up"></i> 存股健檢與篩選
@@ -61,9 +64,9 @@
 
     <div class="app-container">
         <!-- ========================================== -->
-        <!-- 板塊一：匯率與金價 (View 1)                 -->
+        <!-- 板塊一：外幣匯率 (View 1)                   -->
         <!-- ========================================== -->
-        <div class="tab-view active" id="view-fx-gold">
+        <div class="tab-view active" id="view-fx">
             <main class="grid-two-col">
                 <!-- 匯率換算器區塊 -->
                 <section class="converter-card glass-panel">
@@ -199,6 +202,13 @@
                 </div>
             </section>
 
+            </section>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- 板塊二：黃金牌告與走勢 (View 2)            -->
+        <!-- ========================================== -->
+        <div class="tab-view" id="view-gold" style="display: none;">
             <!-- 黃金牌告與走勢區塊 -->
             <section class="gold-section">
                 <div class="glass-panel gold-panel">
@@ -264,7 +274,7 @@
         </div>
 
         <!-- ========================================== -->
-        <!-- 板塊二：股票存股健檢與篩選器 (View 2)       -->
+        <!-- 板塊三：股票存股健檢與篩選器 (View 3)       -->
         <!-- ========================================== -->
         <div class="tab-view" id="view-stocks" style="display: none;">
             <!-- 存股 5 大維度速查卡 (Collapsible) -->

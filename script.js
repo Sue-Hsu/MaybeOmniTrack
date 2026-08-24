@@ -123,10 +123,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================================
     // 2. DOM 元素定位
     // =========================================================================
-    // 導覽分頁
-    const tabFxGold = document.getElementById('tab-fx-gold');
+    // 導覽分頁 (三個獨立分頁)
+    const tabFx = document.getElementById('tab-fx');
+    const tabGold = document.getElementById('tab-gold');
     const tabStocks = document.getElementById('tab-stocks');
-    const viewFxGold = document.getElementById('view-fx-gold');
+    const viewFx = document.getElementById('view-fx');
+    const viewGold = document.getElementById('view-gold');
     const viewStocks = document.getElementById('view-stocks');
 
     // 身分認證
@@ -263,21 +265,29 @@ document.addEventListener('DOMContentLoaded', () => {
     function initNavigation() {
         const switchTab = (target) => {
             state.activeTab = target;
-            if (target === 'view-fx-gold') {
-                tabFxGold.classList.add('active');
-                tabStocks.classList.remove('active');
-                viewFxGold.style.display = 'block';
-                viewStocks.style.display = 'none';
-            } else {
+            tabFx.classList.remove('active');
+            tabGold.classList.remove('active');
+            tabStocks.classList.remove('active');
+            
+            viewFx.style.display = 'none';
+            viewGold.style.display = 'none';
+            viewStocks.style.display = 'none';
+
+            if (target === 'view-fx') {
+                tabFx.classList.add('active');
+                viewFx.style.display = 'block';
+            } else if (target === 'view-gold') {
+                tabGold.classList.add('active');
+                viewGold.style.display = 'block';
+            } else if (target === 'view-stocks') {
                 tabStocks.classList.add('active');
-                tabFxGold.classList.remove('active');
                 viewStocks.style.display = 'block';
-                viewFxGold.style.display = 'none';
                 renderStocks();
             }
         };
 
-        tabFxGold.addEventListener('click', () => switchTab('view-fx-gold'));
+        tabFx.addEventListener('click', () => switchTab('view-fx'));
+        tabGold.addEventListener('click', () => switchTab('view-gold'));
         tabStocks.addEventListener('click', () => switchTab('view-stocks'));
     }
 
