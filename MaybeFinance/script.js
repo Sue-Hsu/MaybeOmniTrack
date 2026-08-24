@@ -2665,19 +2665,69 @@ ${promptRules}
         renderDividendUI(dividendList, stock);
     }
 
+    function formatDividendYear(rawYear, payDate, exDate) {
+        if (!rawYear || rawYear === '--') {
+            const fallbackYear = (payDate && payDate !== '--') ? payDate.slice(0, 4) : ((exDate && exDate !== '--') ? exDate.slice(0, 4) : '');
+            return fallbackYear ? `${fallbackYear}年` : '--';
+        }
+
+        let str = String(rawYear).trim();
+
+        // 1. 判斷是否有季度 Q1~Q4 或 第1季~第4季
+        let quarter = null;
+        const qMatch = str.match(/第([1-4])季|Q([1-4])/i);
+        if (qMatch) {
+            quarter = qMatch[1] || qMatch[2];
+        }
+
+        // 2. 判斷是否有半年度 H1/H2 或 上半年/下半年 或 第1次/第2次
+        let half = null;
+        if (!quarter) {
+            if (/上半年|第1次|H1/i.test(str)) {
+                half = '1';
+            } else if (/下半年|第2次|H2/i.test(str)) {
+                half = '2';
+            }
+        }
+
+        // 3. 提取年份數字
+        let yearNum = null;
+        const numMatch = str.match(/(\d{2,4})/);
+        if (numMatch) {
+            yearNum = parseInt(numMatch[1], 10);
+        } else {
+            const fallbackYear = (payDate && payDate !== '--') ? payDate.slice(0, 4) : ((exDate && exDate !== '--') ? exDate.slice(0, 4) : '');
+            if (fallbackYear) yearNum = parseInt(fallbackYear, 10);
+        }
+
+        if (!yearNum) return str;
+
+        // 若為民國年 (小於 1900，例如 114, 113, 112, 98)，一律轉為西元年 (西元 = 民國 + 1911)
+        const adYear = yearNum < 1900 ? yearNum + 1911 : yearNum;
+
+        // 組合標準西元年格式 (例如 2025Q4、2026H1、2025年)
+        if (quarter) {
+            return `${adYear}Q${quarter}`;
+        } else if (half) {
+            return `${adYear}H${half}`;
+        } else {
+            return `${adYear}年`;
+        }
+    }
+
     function calculateAnnualCashDividend(dividendList) {
         if (!dividendList || dividendList.length === 0) return 0;
 
-        // 判斷是否為季配息 / 半年配 / 月配息（特徵：年度文字含「季/月/半年/Q」或同一年度內出現多次配息）
+        // 判斷是否為季配息 / 半年配 / 月配息
         const yearCountMap = {};
         let isMultiPeriod = false;
 
         dividendList.forEach(item => {
-            const yr = (item.year || '').trim();
-            if (yr.includes('季') || yr.includes('半年') || yr.includes('Q') || yr.includes('月')) {
+            const formattedYr = formatDividendYear(item.year, item.payment_date, item.ex_dividend_date);
+            if (formattedYr.includes('Q') || formattedYr.includes('H') || formattedYr.includes('月')) {
                 isMultiPeriod = true;
             }
-            const yKey = yr.slice(0, 4);
+            const yKey = formattedYr.slice(0, 4);
             if (yKey) {
                 yearCountMap[yKey] = (yearCountMap[yKey] || 0) + 1;
                 if (yearCountMap[yKey] > 1) {
@@ -2687,7 +2737,7 @@ ${promptRules}
         });
 
         if (isMultiPeriod) {
-            // 季配／半年配／月配息（如台積電 2330、00878、00919、00929）：
+            // 季配／半年配／月配息（如台積電 2330、富邦台50 006208、00878、00919、00929）：
             // 加總最新 4 季（或近 1 年的所有配息）作為近 1 年年化現金股利
             const periodsToSum = Math.min(dividendList.length, 4);
             const sumLatestPeriods = dividendList.slice(0, periodsToSum).reduce((sum, r) => sum + (parseFloat(r.cash_dividend) || 0), 0);
@@ -2721,11 +2771,12 @@ ${promptRules}
 
         // 計算累計與平均指標
         const totalCount = list.length;
-        // 近 3 年 / 近 5 年現金股利平均 (按年度加總計算)
+        // 近 3 年 / 近 5 年現金股利平均 (按西元年度加總計算)
         const yearCashMap = {};
         list.forEach(item => {
-            const yKey = (item.year || '').slice(0, 4); // 擷取年份
-            if (yKey) {
+            const formattedYr = formatDividendYear(item.year, item.payment_date, item.ex_dividend_date);
+            const yKey = formattedYr.slice(0, 4); // 擷取 4 碼西元年 (例如 2025, 2024)
+            if (yKey && /^\d{4}$/.test(yKey)) {
                 yearCashMap[yKey] = (yearCashMap[yKey] || 0) + (parseFloat(item.cash_dividend) || 0);
             }
         });
@@ -2749,10 +2800,7 @@ ${promptRules}
 
         if (stockDividendTbody) {
             stockDividendTbody.innerHTML = list.map(item => {
-                const formattedYear = (item.year || '--')
-                    .replace(/(\d+)年第(\d+)季/g, '$1Q$2')
-                    .replace(/(\d+)年Q(\d+)/g, '$1Q$2')
-                    .replace(/第(\d+)季/g, 'Q$1');
+                const formattedYear = formatDividendYear(item.year, item.payment_date, item.ex_dividend_date);
                 const safeYear = escapeHtml(formattedYear);
                 const payYear = (item.payment_date && item.payment_date !== '--') 
                     ? item.payment_date.slice(0, 4) 
