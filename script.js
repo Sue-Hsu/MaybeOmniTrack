@@ -886,18 +886,30 @@ ${promptRules}
                     stockSearchMatchesEl.style.display = 'none';
                     await selectAndDiagnoseStock(matches[0].stock_id, matches[0].stock_name);
                 } else {
-                    // 多支匹配：渲染選擇清單供使用者點選
+                    // 多支匹配：將精確匹配排在最前
+                    matches.sort((a, b) => {
+                        const aExact = (a.stock_id === kw || a.stock_name === kw) ? 0 : 1;
+                        const bExact = (b.stock_id === kw || b.stock_name === kw) ? 0 : 1;
+                        return aExact - bExact;
+                    });
+
+                    const exactMatch = matches.find(s => s.stock_id === kw || s.stock_name === kw);
+
                     stockSearchMatchesEl.style.display = 'block';
                     stockSearchMatchesEl.innerHTML = `
-                        <div style="font-size: 0.8rem; font-weight: 700; color: #475569; margin-bottom: 0.35rem;">
+                        <div class="stock-matches-title">
                             <i class="fa-solid fa-list-check"></i> 找到 ${matches.length} 支相符股票，請點選欲健檢的標的：
                         </div>
-                        <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
-                            ${matches.slice(0, 15).map(s => `
-                                <button type="button" class="btn-stock-choice" data-id="${s.stock_id}" data-name="${s.stock_name}" style="padding: 0.3rem 0.6rem; border: 1px solid #94a3b8; background: #fff; border-radius: 6px; font-size: 0.8rem; cursor: pointer;">
-                                    <strong>${s.stock_id}</strong> ${s.stock_name} <span style="color: #64748b; font-size: 0.7rem;">(${s.industry_category || '一般'})</span>
-                                </button>
-                            `).join('')}
+                        <div class="stock-matches-chips">
+                            ${matches.slice(0, 12).map(s => {
+                                const isExact = (s.stock_id === kw || s.stock_name === kw);
+                                return `
+                                    <button type="button" class="btn-stock-choice ${isExact ? 'exact-match' : ''}" data-id="${s.stock_id}" data-name="${s.stock_name}">
+                                        <strong>${s.stock_id}</strong> ${s.stock_name}
+                                        <span style="color: #166534; font-size: 0.72rem;">${isExact ? '★ 精確' : `(${s.industry_category || '一般'})`}</span>
+                                    </button>
+                                `;
+                            }).join('')}
                         </div>
                     `;
 
@@ -909,6 +921,11 @@ ${promptRules}
                             await selectAndDiagnoseStock(cid, cname);
                         });
                     });
+
+                    // 若有 100% 精確匹配（如輸入 2002 匹配到 2002 中鋼），直接自動帶入並開始 AI 健檢
+                    if (exactMatch) {
+                        await selectAndDiagnoseStock(exactMatch.stock_id, exactMatch.stock_name);
+                    }
                 }
             } catch (err) {
                 alert("搜尋股票時發生錯誤：" + err.message);

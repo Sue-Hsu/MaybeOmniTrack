@@ -1042,6 +1042,71 @@ input:focus, select:focus {
     color: var(--accent-blue);
 }
 
+/* 多股票搜尋結果選擇框 */
+.stock-search-matches-box {
+    flex-shrink: 0;
+    min-height: 80px;
+    max-height: 220px;
+    overflow-y: auto;
+    background: #f0fdf4;
+    border: 1.5px solid #86efac;
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+    margin-bottom: 0.5rem;
+    box-shadow: 0 4px 12px rgba(22, 163, 74, 0.08);
+}
+
+.stock-matches-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #166534;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.stock-matches-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.btn-stock-choice {
+    padding: 0.45rem 0.85rem;
+    border: 1.5px solid #bbf7d0;
+    background: #ffffff;
+    color: #15803d;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: inherit;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.btn-stock-choice:hover {
+    background: #16a34a;
+    color: #ffffff;
+    border-color: #16a34a;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(22, 163, 74, 0.25);
+}
+
+.btn-stock-choice:hover span {
+    color: #dcfce7 !important;
+}
+
+.btn-stock-choice.exact-match {
+    border-color: #16a34a;
+    background: #f0fdf4;
+    font-weight: 700;
+}
+
 /* AI 健檢即時運算動態狀態卡片 */
 .ai-progress-card {
     display: flex;

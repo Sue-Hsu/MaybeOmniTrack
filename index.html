@@ -384,20 +384,18 @@
             <div class="modal-body">
                 <p class="text-sm text-muted">輸入台股代碼或名稱（例如 <code>2886</code> 或 <code>兆豐金</code>），系統將連線 FinMind 抓取股價與財務數據，並透過 <strong>Google Gemini AI</strong> 依據 5 大維度存股指標自動產出屬性與大白話診斷！</p>
                 
-                <div class="form-row" style="margin-top: 0.75rem;">
-                    <div class="form-group" style="flex: 2;">
-                        <label for="add-stock-keyword">台股代碼或名稱 (必填)</label>
-                        <div style="display: flex; gap: 0.5rem;">
-                            <input type="text" id="add-stock-keyword" placeholder="輸入代碼或名稱 (如 2886, 00878, 台積電)">
-                            <button type="button" class="primary-btn" id="btn-search-finmind-stock" style="padding: 0.55rem 0.9rem; white-space: nowrap; font-size: 0.85rem;">
-                                <i class="fa-solid fa-magnifying-glass"></i> 搜尋股票
-                            </button>
-                        </div>
+                <div class="form-group" style="margin-top: 0.5rem;">
+                    <label for="add-stock-keyword">台股代碼或名稱 (必填)</label>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" id="add-stock-keyword" placeholder="輸入代碼或名稱 (如 2886, 2002, 00878, 台積電)">
+                        <button type="button" class="primary-btn" id="btn-search-finmind-stock" style="padding: 0.55rem 1.1rem; white-space: nowrap; font-size: 0.85rem;">
+                            <i class="fa-solid fa-magnifying-glass"></i> 搜尋股票
+                        </button>
                     </div>
                 </div>
 
                 <!-- 搜尋匹配到的股票清單 (多支時供使用者點選) -->
-                <div id="stock-search-matches" style="display: none; margin-bottom: 1rem; max-height: 140px; overflow-y: auto; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0.5rem;">
+                <div id="stock-search-matches" class="stock-search-matches-box" style="display: none;">
                     <!-- JS 動態渲染多支選項 -->
                 </div>
 
