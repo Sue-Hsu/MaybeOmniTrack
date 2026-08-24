@@ -2263,10 +2263,62 @@ ${promptRules}
             }
         }
 
-        // 2. 若有設定 GoldAPI Key，調用官方 API 取得真實最新金價並自動入庫
+        // 2. 檢查區間內是否有缺少的交易日 (排除週末)
+        const missingDates = [];
+        let cur = new Date(start);
+        const endObj = new Date(end);
+        while (cur <= endObj) {
+            if (cur.getDay() !== 0 && cur.getDay() !== 6) {
+                const dStr = cur.toISOString().split('T')[0];
+                if (!existingMap.has(dStr)) {
+                    missingDates.push(dStr);
+                }
+            }
+            cur.setDate(cur.getDate() + 1);
+        }
+
+        // 3. 若有缺漏的歷史日期，向 FinMind 官方歷史金價 (GoldPrice) 抓取真實數據並自動入庫
+        if (missingDates.length > 0) {
+            console.log(`🌐 [金價歷史補齊] 正在從 FinMind 官方資料庫抓取 ${start} ~ ${end} 歷史真實金價...`);
+            try {
+                const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=GoldPrice&start_date=${start}&end_date=${end}`);
+                const json = await res.json();
+                if (json.msg === 'success' && json.data && json.data.length > 0) {
+                    const dailyMap = new Map();
+                    json.data.forEach(item => {
+                        const dStr = item.date.split(' ')[0];
+                        dailyMap.set(dStr, parseFloat(item.Price));
+                    });
+
+                    const rowsToInsert = [];
+                    const usdRate = state.exchangeRates.USD || 32.5;
+
+                    dailyMap.forEach((priceUsd, dStr) => {
+                        const realUsd = parseFloat(priceUsd.toFixed(2));
+                        const realTwd = parseFloat(((realUsd * usdRate) / 31.1035).toFixed(2));
+                        existingMap.set(dStr, { date: dStr, usd: realUsd, twd: realTwd });
+                        rowsToInsert.push({
+                            trade_date: dStr,
+                            usd_per_oz: realUsd,
+                            twd_per_gram: realTwd
+                        });
+                    });
+
+                    if (client && rowsToInsert.length > 0) {
+                        client.from('gold_prices').upsert(rowsToInsert, { onConflict: 'trade_date' }).then(() => {
+                            console.log(`💾 [真實入庫] 成功將 FinMind ${rowsToInsert.length} 筆歷史金價寫入 Supabase！`);
+                        });
+                    }
+                }
+            } catch (err) {
+                console.warn("FinMind GoldPrice fetch error:", err);
+            }
+        }
+
+        // 4. 若有設定 GoldAPI Key，額外抓取今日即時現貨報價以確保分秒最新
         if (goldKey) {
             try {
-                console.log("🌐 [GoldAPI] 正在向官方 API 抓取真實金價...");
+                console.log("🌐 [GoldAPI] 正在向官方 API 抓取今日即時金價...");
                 const res = await fetch("https://www.goldapi.io/api/XAU/USD", {
                     headers: { "x-access-token": goldKey }
                 });
@@ -2280,19 +2332,17 @@ ${promptRules}
                         const todayRow = { date: todayStr, usd: realUsd, twd: realTwd };
                         existingMap.set(todayStr, todayRow);
 
-                        // 將真實 API 數值寫入 Supabase
+                        // 將真實即時 API 數值寫入 Supabase
                         if (client) {
                             client.from('gold_prices').upsert([{
                                 trade_date: todayStr,
                                 usd_per_oz: realUsd,
                                 twd_per_gram: realTwd
                             }], { onConflict: 'trade_date' }).then(() => {
-                                console.log(`💾 [真實入庫] 成功將 GoldAPI 官方即時金價 ($${realUsd}) 寫入 Supabase！`);
+                                console.log(`💾 [即時入庫] 成功將 GoldAPI 今日即時金價 ($${realUsd}) 寫入 Supabase！`);
                             });
                         }
                     }
-                } else {
-                    console.warn(`GoldAPI 回傳狀態碼 ${res.status}`);
                 }
             } catch (err) {
                 console.warn("GoldAPI live fetch error:", err);
