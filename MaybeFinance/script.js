@@ -1267,28 +1267,46 @@ ${promptRules}
   "diagnosis": "60~100字大白話診斷評語：說明護城河、抗跌性、配息大方程度、是否符合安全邊際與適合族群。"
 }
 `;
-                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`;
-                const res = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: promptText }] }]
-                    })
-                });
+                const candidateModels = [selectedModel];
+                if (!candidateModels.includes('gemini-1.5-flash')) candidateModels.push('gemini-1.5-flash');
+                if (!candidateModels.includes('gemini-2.0-flash')) candidateModels.push('gemini-2.0-flash');
 
-                if (res.ok) {
-                    const json = await res.json();
-                    const tokenCount = (json.usageMetadata && json.usageMetadata.totalTokenCount) || 0;
-                    recordGeminiCall(tokenCount);
-                    let rawText = json.candidates[0].content.parts[0].text.trim();
-                    if (rawText.startsWith('```json')) rawText = rawText.replace(/^```json/, '').replace(/```$/, '').trim();
-                    else if (rawText.startsWith('```')) rawText = rawText.replace(/^```/, '').replace(/```$/, '').trim();
-                    const parsed = JSON.parse(rawText);
-                    console.log(`🤖 [Gemini AI 模型 (${selectedModel}) 診斷成功 (消耗 ${tokenCount} Tokens)]`, parsed);
-                    return parsed;
+                for (let modelName of candidateModels) {
+                    try {
+                        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+                        const res = await fetch(endpoint, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                contents: [{ parts: [{ text: promptText }] }]
+                            })
+                        });
+
+                        if (res.ok) {
+                            const json = await res.json();
+                            const tokenCount = (json.usageMetadata && json.usageMetadata.totalTokenCount) || 0;
+                            recordGeminiCall(tokenCount);
+                            let rawText = json.candidates[0].content.parts[0].text.trim();
+                            if (rawText.startsWith('```json')) rawText = rawText.replace(/^```json/, '').replace(/```$/, '').trim();
+                            else if (rawText.startsWith('```')) rawText = rawText.replace(/^```/, '').replace(/```$/, '').trim();
+                            const parsed = JSON.parse(rawText);
+                            parsed._source = 'gemini';
+                            parsed._model = modelName;
+                            console.log(`🤖 [Gemini AI 模型 (${modelName}) 診斷成功 (消耗 ${tokenCount} Tokens)]`, parsed);
+                            return parsed;
+                        } else {
+                            console.warn(`Gemini API 模型 ${modelName} 回傳 HTTP ${res.status}，正在嘗試備援處理...`);
+                            if (res.status === 429 || res.status === 503) {
+                                // 遇到頻率限制或 Google 伺服器超載，稍等 1.5 秒
+                                await new Promise(r => setTimeout(r, 1500));
+                            }
+                        }
+                    } catch (mErr) {
+                        console.warn(`Gemini model ${modelName} error:`, mErr);
+                    }
                 }
             } catch (aiErr) {
-                console.warn(`Gemini API (${selectedModel}) call failed, falling back to rule engine`, aiErr);
+                console.warn(`Gemini API 呼叫失敗，退回經典存股規則引擎:`, aiErr);
             }
         }
 
@@ -1580,9 +1598,17 @@ ${promptRules}
                     // 6. 記錄於即時日誌視窗
                     const logItem = document.createElement('div');
                     const catText = newStock.category === 'dividend' ? '🏆 適合穩健存股' : newStock.category === 'cashflow' ? '💰 適合領高利息' : '🚀 適合波段賺價差';
-                    logItem.innerHTML = `<span style="color: #16a34a; font-weight: bold;">✔ [${target.code} ${target.name}]</span> 現價 NT$${newStock.price.toFixed(2)} ｜ <span style="color: #4338ca;">${catText}</span> ｜ 殖利率 ${newStock.yield}% ➔ <span style="color: #059669;">已存入 Supabase</span>`;
+                    const aiSourceTag = aiResult._source === 'gemini' 
+                        ? `<span style="color: #4338ca; font-weight: 600;">🤖 Gemini (${aiResult._model || 'AI'})</span>` 
+                        : `<span style="color: #64748b; font-weight: 600;">🛡️ 存股規則庫</span>`;
+                    logItem.innerHTML = `<span style="color: #16a34a; font-weight: bold;">✔ [${target.code} ${target.name}]</span> NT$${newStock.price.toFixed(2)} ｜ ${aiSourceTag} ｜ ${catText} ｜ 殖利率 ${newStock.yield}% ➔ <span style="color: #059669;">已存入 Supabase</span>`;
                     batchLogList.appendChild(logItem);
                     batchLogList.scrollTop = batchLogList.scrollHeight;
+
+                    // 避免超過 Google AI Studio 每分鐘 15 次 (RPM) 速率限制，每檔間隔 1.2 秒
+                    if (processed < total) {
+                        await new Promise(r => setTimeout(r, 1200));
+                    }
                 }
 
                 localStorage.setItem('maybe_omni_watchlist', JSON.stringify([...state.watchlist]));
