@@ -2749,7 +2749,11 @@ ${promptRules}
 
         if (stockDividendTbody) {
             stockDividendTbody.innerHTML = list.map(item => {
-                const safeYear = escapeHtml(item.year || '--');
+                const formattedYear = (item.year || '--')
+                    .replace(/(\d+)年第(\d+)季/g, '$1Q$2')
+                    .replace(/(\d+)年Q(\d+)/g, '$1Q$2')
+                    .replace(/第(\d+)季/g, 'Q$1');
+                const safeYear = escapeHtml(formattedYear);
                 const payYear = (item.payment_date && item.payment_date !== '--') 
                     ? item.payment_date.slice(0, 4) 
                     : ((item.ex_dividend_date && item.ex_dividend_date !== '--') ? item.ex_dividend_date.slice(0, 4) : '');
