@@ -316,16 +316,14 @@ document.addEventListener('DOMContentLoaded', () => {
     function initFirebaseVault() {
         if (!state.config.firebaseConfig || typeof firebase === 'undefined') return;
         try {
-            let conf = null;
-            if (typeof state.config.firebaseConfig === 'string') {
-                let cleanStr = state.config.firebaseConfig.trim();
+            let conf = state.config.firebaseConfig;
+            if (typeof conf === 'string') {
+                let cleanStr = conf.trim();
                 if (!cleanStr.startsWith('{')) {
                     const match = cleanStr.match(/\{[\s\S]*\}/);
                     if (match) cleanStr = match[0];
                 }
                 conf = JSON.parse(cleanStr);
-            } else {
-                conf = state.config.firebaseConfig;
             }
 
             if (conf && conf.apiKey && !firebase.apps.length) {
@@ -336,7 +334,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log("🔥 Firebase Vault initialized successfully.");
             }
         } catch (e) {
-            console.warn("Firebase Vault init warning:", e);
+            console.error("Firebase Vault init error:", e);
         }
     }
 
@@ -365,7 +363,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function saveSecretsToFirebase() {
         if (!firestoreDb) initFirebaseVault();
-        if (!firestoreDb) return;
+        if (!firestoreDb) {
+            console.warn("Firestore not available");
+            return;
+        }
         try {
             await firestoreDb.collection('app_config').doc('secrets').set({
                 supabase_url: state.config.supabaseUrl,
@@ -379,7 +380,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }, { merge: true });
             console.log("🔥 Secrets saved to Firebase Vault successfully!");
         } catch (e) {
-            console.warn("Save to Firebase Vault error:", e);
+            console.error("Save to Firebase Vault error:", e);
+            alert("Firebase 保險庫儲存時發生錯誤：" + e.message);
         }
     }
 
