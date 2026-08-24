@@ -39,6 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
             supabaseUrl: '',
             supabaseKey: '',
             goldApiKey: '',
+            finmindToken: '', // FinMind 專屬 Token (每小時享 600 次免限流)
             geminiApiKey: '', // Google Studio AI (Gemini Flash) API Key
             geminiModel: 'gemini-3.7-flash', // 選定的 Gemini 模型
             geminiPrompt: '', // 自訂存股健檢法則與提示詞
@@ -113,6 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const adminSupabaseUrl = document.getElementById('admin-supabase-url');
     const adminSupabaseKey = document.getElementById('admin-supabase-key');
     const adminGoldKey = document.getElementById('admin-gold-key');
+    const adminFinmindToken = document.getElementById('admin-finmind-token');
     const adminGeminiKey = document.getElementById('admin-gemini-key');
     const adminGeminiModel = document.getElementById('admin-gemini-model');
     const adminGeminiPrompt = document.getElementById('admin-gemini-prompt');
@@ -350,6 +352,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.supabase_url) state.config.supabaseUrl = data.supabase_url;
                 if (data.supabase_key) state.config.supabaseKey = data.supabase_key;
                 if (data.gold_key) state.config.goldApiKey = data.gold_key;
+                if (data.finmind_token) state.config.finmindToken = data.finmind_token;
                 if (data.gemini_key) state.config.geminiApiKey = data.gemini_key;
                 if (data.gemini_model) state.config.geminiModel = data.gemini_model;
                 if (data.gemini_prompt) state.config.geminiPrompt = data.gemini_prompt;
@@ -374,6 +377,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 supabase_url: state.config.supabaseUrl,
                 supabase_key: state.config.supabaseKey,
                 gold_key: state.config.goldApiKey,
+                finmind_token: state.config.finmindToken || '',
                 gemini_key: state.config.geminiApiKey,
                 gemini_model: state.config.geminiModel,
                 gemini_prompt: state.config.geminiPrompt || STOCK_RULES_KNOWLEDGE,
@@ -388,6 +392,23 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error("Save to Firebase Vault error:", e);
             alert("Firebase 保險庫儲存時發生錯誤：" + e.message);
         }
+    }
+
+    // =========================================================================
+    // 5.5 FinMind API 請求產生器 (自動附加專屬 Token 享有獨立 600次/hr 額度)
+    // =========================================================================
+    function buildFinMindUrl(dataset, params = {}) {
+        const url = new URL('https://api.finmindtrade.com/api/v4/data');
+        url.searchParams.set('dataset', dataset);
+        for (const [k, v] of Object.entries(params)) {
+            if (v !== undefined && v !== null && v !== '') {
+                url.searchParams.set(k, v);
+            }
+        }
+        if (state.config.finmindToken && state.config.finmindToken.trim()) {
+            url.searchParams.set('token', state.config.finmindToken.trim());
+        }
+        return url.toString();
     }
 
     // =========================================================================
@@ -646,6 +667,7 @@ document.addEventListener('DOMContentLoaded', () => {
             adminSupabaseUrl.value = state.config.supabaseUrl;
             adminSupabaseKey.value = state.config.supabaseKey;
             adminGoldKey.value = state.config.goldApiKey;
+            if (adminFinmindToken) adminFinmindToken.value = state.config.finmindToken || '';
             if (adminGeminiKey) adminGeminiKey.value = state.config.geminiApiKey || '';
             const targetModel = state.config.geminiModel || 'gemini-3.7-flash';
             if (adminGeminiModel) {
@@ -815,6 +837,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.config.supabaseUrl = adminSupabaseUrl.value.trim();
             state.config.supabaseKey = adminSupabaseKey.value.trim();
             state.config.goldApiKey = adminGoldKey.value.trim();
+            if (adminFinmindToken) state.config.finmindToken = adminFinmindToken.value.trim();
             if (adminGeminiKey) state.config.geminiApiKey = adminGeminiKey.value.trim();
             if (adminGeminiModel) state.config.geminiModel = adminGeminiModel.value;
             if (adminGeminiPrompt) state.config.geminiPrompt = adminGeminiPrompt.value.trim();
@@ -1283,7 +1306,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function fetchFinMindStockList() {
         if (cachedFinMindStockList && cachedFinMindStockList.length > 0) return cachedFinMindStockList;
         try {
-            const res = await fetch("https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo");
+            const res = await fetch(buildFinMindUrl('TaiwanStockInfo'));
             const json = await res.json();
             if (json.msg === 'success' && json.data) {
                 // 依 stock_id 智慧去重，並優先保留細部產業類別
@@ -1405,7 +1428,7 @@ ${promptRules}
             const todayStr = new Date().toISOString().split('T')[0];
             const past10 = new Date(); past10.setDate(new Date().getDate() - 10);
             const past10Str = past10.toISOString().split('T')[0];
-            const pRes = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPER&data_id=${code}&start_date=${past10Str}&end_date=${todayStr}`);
+            const pRes = await fetch(buildFinMindUrl('TaiwanStockPER', { data_id: code, start_date: past10Str, end_date: todayStr }));
             const pJson = await pRes.json();
             if (pJson.msg === 'success' && pJson.data && pJson.data.length > 0) {
                 const latestP = pJson.data[pJson.data.length - 1];
@@ -1691,7 +1714,7 @@ ${promptRules}
 
                     // 1. 連線 FinMind 取得最新股價
                     try {
-                        const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${target.code}&start_date=${pastStr}&end_date=${today}`);
+                        const res = await fetch(buildFinMindUrl('TaiwanStockPrice', { data_id: target.code, start_date: pastStr, end_date: today }));
                         const json = await res.json();
                         if (json.msg === 'success' && json.data && json.data.length > 0) {
                             const latest = json.data[json.data.length - 1];
@@ -1921,7 +1944,7 @@ ${promptRules}
                     const today = new Date().toISOString().split('T')[0];
                     const past = new Date(); past.setDate(new Date().getDate() - 30);
                     const pastStr = past.toISOString().split('T')[0];
-                    const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${code}&start_date=${pastStr}&end_date=${today}`);
+                    const res = await fetch(buildFinMindUrl('TaiwanStockPrice', { data_id: code, start_date: pastStr, end_date: today }));
                     const json = await res.json();
                     if (json.msg === 'success' && json.data && json.data.length > 0) {
                         const latest = json.data[json.data.length - 1];
@@ -2175,7 +2198,7 @@ ${promptRules}
                     try {
                         const today = new Date().toISOString().split('T')[0];
                         const past = new Date(); past.setDate(new Date().getDate() - 10);
-                        const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${stock.id}&start_date=${past.toISOString().split('T')[0]}&end_date=${today}`);
+                        const res = await fetch(buildFinMindUrl('TaiwanStockPrice', { data_id: stock.id, start_date: past.toISOString().split('T')[0], end_date: today }));
                         const json = await res.json();
                         if (json.msg === 'success' && json.data && json.data.length > 0) {
                             stock.price = parseFloat(json.data[json.data.length - 1].close);
@@ -2650,7 +2673,7 @@ ${promptRules}
         if (needSync) {
             console.log(`🌐 [增量同步] 正在為 ${stock.name} (${stock.id}) 補齊 ${fetchStartStr} ~ ${todayStr} 之最新日 K...`);
             try {
-                const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${stock.id}&start_date=${fetchStartStr}&end_date=${todayStr}`);
+                const res = await fetch(buildFinMindUrl('TaiwanStockPrice', { data_id: stock.id, start_date: fetchStartStr, end_date: todayStr }));
                 const json = await res.json();
                 if (json.msg === 'success' && json.data && json.data.length > 0) {
                     const newItems = json.data.map(d => ({
@@ -2695,147 +2718,8 @@ ${promptRules}
         }
     }
 
-    // 高精度離線備援配息資料庫（涵蓋台股主流存股與高股息 ETF 完整全歷史深度）
-    const FALLBACK_DIVIDEND_MAP = {
-        '0050': [
-            { year: '2026H1', cash_dividend: 3.50, stock_dividend: 0, total_dividend: 3.50, ex_dividend_date: '2026-07-16', payment_date: '2026-08-08', announcement_date: '2026-07-01' },
-            { year: '2025H2', cash_dividend: 1.00, stock_dividend: 0, total_dividend: 1.00, ex_dividend_date: '2025-01-17', payment_date: '2025-02-21', announcement_date: '2025-01-02' },
-            { year: '2025H1', cash_dividend: 3.00, stock_dividend: 0, total_dividend: 3.00, ex_dividend_date: '2025-07-16', payment_date: '2025-08-08', announcement_date: '2025-07-01' },
-            { year: '2024H2', cash_dividend: 1.00, stock_dividend: 0, total_dividend: 1.00, ex_dividend_date: '2024-01-17', payment_date: '2024-02-21', announcement_date: '2024-01-02' },
-            { year: '2024H1', cash_dividend: 3.00, stock_dividend: 0, total_dividend: 3.00, ex_dividend_date: '2024-07-16', payment_date: '2024-08-09', announcement_date: '2024-07-01' },
-            { year: '2023H2', cash_dividend: 1.90, stock_dividend: 0, total_dividend: 1.90, ex_dividend_date: '2023-01-30', payment_date: '2023-03-07', announcement_date: '2023-01-03' },
-            { year: '2023H1', cash_dividend: 2.60, stock_dividend: 0, total_dividend: 2.60, ex_dividend_date: '2023-07-18', payment_date: '2023-08-11', announcement_date: '2023-07-03' },
-            { year: '2022H2', cash_dividend: 1.80, stock_dividend: 0, total_dividend: 1.80, ex_dividend_date: '2022-01-21', payment_date: '2022-03-04', announcement_date: '2022-01-03' },
-            { year: '2022H1', cash_dividend: 3.20, stock_dividend: 0, total_dividend: 3.20, ex_dividend_date: '2022-07-18', payment_date: '2022-08-19', announcement_date: '2022-07-01' },
-            { year: '2021H2', cash_dividend: 1.80, stock_dividend: 0, total_dividend: 1.80, ex_dividend_date: '2021-01-22', payment_date: '2021-03-09', announcement_date: '2021-01-04' },
-            { year: '2021H1', cash_dividend: 2.15, stock_dividend: 0, total_dividend: 2.15, ex_dividend_date: '2021-07-21', payment_date: '2021-08-24', announcement_date: '2021-07-01' },
-            { year: '2020H2', cash_dividend: 2.90, stock_dividend: 0, total_dividend: 2.90, ex_dividend_date: '2020-01-22', payment_date: '2020-03-09', announcement_date: '2020-01-03' },
-            { year: '2020H1', cash_dividend: 0.70, stock_dividend: 0, total_dividend: 0.70, ex_dividend_date: '2020-07-21', payment_date: '2020-08-25', announcement_date: '2020-07-01' },
-            { year: '2019H2', cash_dividend: 2.30, stock_dividend: 0, total_dividend: 2.30, ex_dividend_date: '2019-01-22', payment_date: '2019-03-08', announcement_date: '2019-01-03' },
-            { year: '2019H1', cash_dividend: 0.70, stock_dividend: 0, total_dividend: 0.70, ex_dividend_date: '2019-07-19', payment_date: '2019-08-23', announcement_date: '2019-07-01' },
-            { year: '2018H2', cash_dividend: 2.20, stock_dividend: 0, total_dividend: 2.20, ex_dividend_date: '2018-01-22', payment_date: '2018-03-06', announcement_date: '2018-01-03' },
-            { year: '2018H1', cash_dividend: 0.70, stock_dividend: 0, total_dividend: 0.70, ex_dividend_date: '2018-07-19', payment_date: '2018-08-24', announcement_date: '2018-07-02' },
-            { year: '2017H2', cash_dividend: 1.70, stock_dividend: 0, total_dividend: 1.70, ex_dividend_date: '2017-02-08', payment_date: '2017-03-09', announcement_date: '2017-01-03' },
-            { year: '2017H1', cash_dividend: 0.70, stock_dividend: 0, total_dividend: 0.70, ex_dividend_date: '2017-07-21', payment_date: '2017-08-24', announcement_date: '2017-07-03' },
-            { year: '2016H2', cash_dividend: 0.85, stock_dividend: 0, total_dividend: 0.85, ex_dividend_date: '2016-07-28', payment_date: '2016-08-26', announcement_date: '2016-07-01' },
-            { year: '2016H1', cash_dividend: 2.00, stock_dividend: 0, total_dividend: 2.00, ex_dividend_date: '2016-01-21', payment_date: '2016-03-08', announcement_date: '2016-01-04' },
-            { year: '2015', cash_dividend: 2.00, stock_dividend: 0, total_dividend: 2.00, ex_dividend_date: '2015-10-26', payment_date: '2015-11-30', announcement_date: '2015-10-01' },
-            { year: '2014', cash_dividend: 1.55, stock_dividend: 0, total_dividend: 1.55, ex_dividend_date: '2014-10-24', payment_date: '2014-11-28', announcement_date: '2014-10-01' },
-            { year: '2013', cash_dividend: 1.35, stock_dividend: 0, total_dividend: 1.35, ex_dividend_date: '2013-10-24', payment_date: '2013-11-28', announcement_date: '2013-10-01' },
-            { year: '2012', cash_dividend: 1.85, stock_dividend: 0, total_dividend: 1.85, ex_dividend_date: '2012-10-24', payment_date: '2012-11-28', announcement_date: '2012-10-01' },
-            { year: '2011', cash_dividend: 1.95, stock_dividend: 0, total_dividend: 1.95, ex_dividend_date: '2011-10-25', payment_date: '2011-11-29', announcement_date: '2011-10-03' },
-            { year: '2010', cash_dividend: 2.20, stock_dividend: 0, total_dividend: 2.20, ex_dividend_date: '2010-10-25', payment_date: '2010-11-29', announcement_date: '2010-10-01' }
-        ],
-        '0056': [
-            { year: '2026Q3', cash_dividend: 1.07, stock_dividend: 0, total_dividend: 1.07, ex_dividend_date: '2026-07-16', payment_date: '2026-08-08', announcement_date: '2026-07-01' },
-            { year: '2026Q2', cash_dividend: 0.79, stock_dividend: 0, total_dividend: 0.79, ex_dividend_date: '2026-04-18', payment_date: '2026-05-14', announcement_date: '2026-04-01' },
-            { year: '2026Q1', cash_dividend: 0.70, stock_dividend: 0, total_dividend: 0.70, ex_dividend_date: '2026-01-17', payment_date: '2026-02-21', announcement_date: '2026-01-02' },
-            { year: '2025Q4', cash_dividend: 1.07, stock_dividend: 0, total_dividend: 1.07, ex_dividend_date: '2025-10-17', payment_date: '2025-11-12', announcement_date: '2025-10-01' },
-            { year: '2025Q3', cash_dividend: 1.07, stock_dividend: 0, total_dividend: 1.07, ex_dividend_date: '2025-07-16', payment_date: '2025-08-08', announcement_date: '2025-07-01' },
-            { year: '2025Q2', cash_dividend: 0.79, stock_dividend: 0, total_dividend: 0.79, ex_dividend_date: '2025-04-18', payment_date: '2025-05-14', announcement_date: '2025-04-01' },
-            { year: '2025Q1', cash_dividend: 0.70, stock_dividend: 0, total_dividend: 0.70, ex_dividend_date: '2025-01-17', payment_date: '2025-02-21', announcement_date: '2025-01-02' },
-            { year: '2024Q4', cash_dividend: 1.07, stock_dividend: 0, total_dividend: 1.07, ex_dividend_date: '2024-10-17', payment_date: '2024-11-12', announcement_date: '2024-10-01' },
-            { year: '2024Q3', cash_dividend: 1.07, stock_dividend: 0, total_dividend: 1.07, ex_dividend_date: '2024-07-16', payment_date: '2024-08-09', announcement_date: '2024-07-01' },
-            { year: '2024Q2', cash_dividend: 0.79, stock_dividend: 0, total_dividend: 0.79, ex_dividend_date: '2024-04-18', payment_date: '2024-05-14', announcement_date: '2024-04-01' },
-            { year: '2024Q1', cash_dividend: 0.70, stock_dividend: 0, total_dividend: 0.70, ex_dividend_date: '2024-01-17', payment_date: '2024-02-21', announcement_date: '2024-01-02' },
-            { year: '2023Q4', cash_dividend: 1.20, stock_dividend: 0, total_dividend: 1.20, ex_dividend_date: '2023-10-19', payment_date: '2023-11-14', announcement_date: '2023-10-02' },
-            { year: '2023Q3', cash_dividend: 1.00, stock_dividend: 0, total_dividend: 1.00, ex_dividend_date: '2023-07-18', payment_date: '2023-08-11', announcement_date: '2023-07-03' },
-            { year: '2022', cash_dividend: 2.10, stock_dividend: 0, total_dividend: 2.10, ex_dividend_date: '2022-10-19', payment_date: '2022-11-22', announcement_date: '2022-10-03' },
-            { year: '2021', cash_dividend: 1.80, stock_dividend: 0, total_dividend: 1.80, ex_dividend_date: '2021-10-22', payment_date: '2021-12-01', announcement_date: '2021-10-01' }
-        ],
-        '00878': [
-            { year: '2026Q3', cash_dividend: 0.55, stock_dividend: 0, total_dividend: 0.55, ex_dividend_date: '2026-08-18', payment_date: '2026-09-11', announcement_date: '2026-08-01' },
-            { year: '2026Q2', cash_dividend: 0.51, stock_dividend: 0, total_dividend: 0.51, ex_dividend_date: '2026-05-17', payment_date: '2026-06-13', announcement_date: '2026-05-02' },
-            { year: '2026Q1', cash_dividend: 0.40, stock_dividend: 0, total_dividend: 0.40, ex_dividend_date: '2026-02-27', payment_date: '2026-03-25', announcement_date: '2026-02-01' },
-            { year: '2025Q4', cash_dividend: 0.55, stock_dividend: 0, total_dividend: 0.55, ex_dividend_date: '2025-11-18', payment_date: '2025-12-12', announcement_date: '2025-11-01' },
-            { year: '2025Q3', cash_dividend: 0.55, stock_dividend: 0, total_dividend: 0.55, ex_dividend_date: '2025-08-18', payment_date: '2025-09-11', announcement_date: '2025-08-01' },
-            { year: '2025Q2', cash_dividend: 0.51, stock_dividend: 0, total_dividend: 0.51, ex_dividend_date: '2025-05-17', payment_date: '2025-06-13', announcement_date: '2025-05-02' },
-            { year: '2025Q1', cash_dividend: 0.40, stock_dividend: 0, total_dividend: 0.40, ex_dividend_date: '2025-02-27', payment_date: '2025-03-25', announcement_date: '2025-02-01' },
-            { year: '2024Q4', cash_dividend: 0.55, stock_dividend: 0, total_dividend: 0.55, ex_dividend_date: '2024-11-18', payment_date: '2024-12-12', announcement_date: '2024-11-01' },
-            { year: '2024Q3', cash_dividend: 0.55, stock_dividend: 0, total_dividend: 0.55, ex_dividend_date: '2024-08-16', payment_date: '2024-09-11', announcement_date: '2024-08-01' },
-            { year: '2024Q2', cash_dividend: 0.51, stock_dividend: 0, total_dividend: 0.51, ex_dividend_date: '2024-05-17', payment_date: '2024-06-13', announcement_date: '2024-05-02' },
-            { year: '2024Q1', cash_dividend: 0.40, stock_dividend: 0, total_dividend: 0.40, ex_dividend_date: '2024-02-27', payment_date: '2024-03-25', announcement_date: '2024-02-01' }
-        ],
-        '006208': [
-            { year: '2026H1', cash_dividend: 4.75, stock_dividend: 0, total_dividend: 4.75, ex_dividend_date: '2026-07-16', payment_date: '2026-08-11', announcement_date: '2026-07-01' },
-            { year: '2025H2', cash_dividend: 0.90, stock_dividend: 0, total_dividend: 0.90, ex_dividend_date: '2025-11-18', payment_date: '2025-12-12', announcement_date: '2025-11-01' },
-            { year: '2025H1', cash_dividend: 1.65, stock_dividend: 0, total_dividend: 1.65, ex_dividend_date: '2025-07-16', payment_date: '2025-08-11', announcement_date: '2025-07-01' },
-            { year: '2024H2', cash_dividend: 1.35, stock_dividend: 0, total_dividend: 1.35, ex_dividend_date: '2024-11-18', payment_date: '2024-12-12', announcement_date: '2024-11-01' },
-            { year: '2024H1', cash_dividend: 1.06, stock_dividend: 0, total_dividend: 1.06, ex_dividend_date: '2024-07-16', payment_date: '2024-08-11', announcement_date: '2024-07-01' },
-            { year: '2023H2', cash_dividend: 0.86, stock_dividend: 0, total_dividend: 0.86, ex_dividend_date: '2023-11-21', payment_date: '2023-12-15', announcement_date: '2023-11-01' },
-            { year: '2023H1', cash_dividend: 1.35, stock_dividend: 0, total_dividend: 1.35, ex_dividend_date: '2023-07-18', payment_date: '2023-08-11', announcement_date: '2023-07-03' },
-            { year: '2022H2', cash_dividend: 1.03, stock_dividend: 0, total_dividend: 1.03, ex_dividend_date: '2022-11-16', payment_date: '2022-12-19', announcement_date: '2022-11-01' },
-            { year: '2022H1', cash_dividend: 1.24, stock_dividend: 0, total_dividend: 1.24, ex_dividend_date: '2022-07-18', payment_date: '2022-08-19', announcement_date: '2022-07-01' },
-            { year: '2021H2', cash_dividend: 1.15, stock_dividend: 0, total_dividend: 1.15, ex_dividend_date: '2021-11-16', payment_date: '2021-12-17', announcement_date: '2021-11-01' },
-            { year: '2021H1', cash_dividend: 0.39, stock_dividend: 0, total_dividend: 0.39, ex_dividend_date: '2021-07-21', payment_date: '2021-08-24', announcement_date: '2021-07-01' },
-            { year: '2020', cash_dividend: 2.30, stock_dividend: 0, total_dividend: 2.30, ex_dividend_date: '2020-11-17', payment_date: '2020-12-18', announcement_date: '2020-11-02' },
-            { year: '2019', cash_dividend: 2.05, stock_dividend: 0, total_dividend: 2.05, ex_dividend_date: '2019-11-19', payment_date: '2019-12-20', announcement_date: '2019-11-01' },
-            { year: '2018', cash_dividend: 1.48, stock_dividend: 0, total_dividend: 1.48, ex_dividend_date: '2018-11-19', payment_date: '2018-12-21', announcement_date: '2018-11-01' },
-            { year: '2017', cash_dividend: 1.10, stock_dividend: 0, total_dividend: 1.10, ex_dividend_date: '2017-11-20', payment_date: '2017-12-22', announcement_date: '2017-11-01' },
-            { year: '2016', cash_dividend: 0.83, stock_dividend: 0, total_dividend: 0.83, ex_dividend_date: '2016-11-21', payment_date: '2016-12-23', announcement_date: '2016-11-01' },
-            { year: '2015', cash_dividend: 0.80, stock_dividend: 0, total_dividend: 0.80, ex_dividend_date: '2015-11-23', payment_date: '2015-12-24', announcement_date: '2015-11-02' },
-            { year: '2014', cash_dividend: 0.70, stock_dividend: 0, total_dividend: 0.70, ex_dividend_date: '2014-11-24', payment_date: '2014-12-26', announcement_date: '2014-11-03' },
-            { year: '2013', cash_dividend: 0.60, stock_dividend: 0, total_dividend: 0.60, ex_dividend_date: '2013-11-25', payment_date: '2013-12-27', announcement_date: '2013-11-01' },
-            { year: '2012', cash_dividend: 0.50, stock_dividend: 0, total_dividend: 0.50, ex_dividend_date: '2012-11-26', payment_date: '2012-12-28', announcement_date: '2012-11-01' }
-        ],
-        '00919': [
-            { year: '2026Q2', cash_dividend: 0.72, stock_dividend: 0, total_dividend: 0.72, ex_dividend_date: '2026-06-18', payment_date: '2026-07-15', announcement_date: '2026-06-02' },
-            { year: '2026Q1', cash_dividend: 0.72, stock_dividend: 0, total_dividend: 0.72, ex_dividend_date: '2026-03-18', payment_date: '2026-04-15', announcement_date: '2026-03-02' },
-            { year: '2025Q4', cash_dividend: 0.72, stock_dividend: 0, total_dividend: 0.72, ex_dividend_date: '2025-12-18', payment_date: '2026-01-15', announcement_date: '2025-12-02' },
-            { year: '2025Q3', cash_dividend: 0.70, stock_dividend: 0, total_dividend: 0.70, ex_dividend_date: '2025-09-18', payment_date: '2025-10-15', announcement_date: '2025-09-02' },
-            { year: '2025Q2', cash_dividend: 0.70, stock_dividend: 0, total_dividend: 0.70, ex_dividend_date: '2025-06-18', payment_date: '2025-07-15', announcement_date: '2025-06-02' },
-            { year: '2025Q1', cash_dividend: 0.66, stock_dividend: 0, total_dividend: 0.66, ex_dividend_date: '2025-03-18', payment_date: '2025-04-15', announcement_date: '2025-03-02' }
-        ],
-        '2330': [
-            { year: '2026Q1', cash_dividend: 4.50, stock_dividend: 0, total_dividend: 4.50, ex_dividend_date: '2026-09-12', payment_date: '2026-10-09', announcement_date: '2026-08-10' },
-            { year: '2025Q4', cash_dividend: 4.50, stock_dividend: 0, total_dividend: 4.50, ex_dividend_date: '2026-06-13', payment_date: '2026-07-11', announcement_date: '2026-05-10' },
-            { year: '2025Q3', cash_dividend: 4.00, stock_dividend: 0, total_dividend: 4.00, ex_dividend_date: '2026-03-14', payment_date: '2026-04-10', announcement_date: '2026-02-10' },
-            { year: '2025Q2', cash_dividend: 4.00, stock_dividend: 0, total_dividend: 4.00, ex_dividend_date: '2025-12-12', payment_date: '2026-01-09', announcement_date: '2025-11-10' },
-            { year: '2025Q1', cash_dividend: 3.50, stock_dividend: 0, total_dividend: 3.50, ex_dividend_date: '2025-09-12', payment_date: '2025-10-09', announcement_date: '2025-08-10' },
-            { year: '2024Q4', cash_dividend: 3.50, stock_dividend: 0, total_dividend: 3.50, ex_dividend_date: '2025-06-13', payment_date: '2025-07-11', announcement_date: '2025-05-10' },
-            { year: '2024Q3', cash_dividend: 3.50, stock_dividend: 0, total_dividend: 3.50, ex_dividend_date: '2025-03-14', payment_date: '2025-04-10', announcement_date: '2025-02-10' },
-            { year: '2024Q2', cash_dividend: 3.00, stock_dividend: 0, total_dividend: 3.00, ex_dividend_date: '2024-12-12', payment_date: '2025-01-09', announcement_date: '2024-11-10' },
-            { year: '2024Q1', cash_dividend: 3.00, stock_dividend: 0, total_dividend: 3.00, ex_dividend_date: '2024-09-12', payment_date: '2024-10-09', announcement_date: '2024-08-10' },
-            { year: '2023Q4', cash_dividend: 3.00, stock_dividend: 0, total_dividend: 3.00, ex_dividend_date: '2024-06-13', payment_date: '2024-07-11', announcement_date: '2024-05-10' },
-            { year: '2023Q3', cash_dividend: 2.75, stock_dividend: 0, total_dividend: 2.75, ex_dividend_date: '2024-03-14', payment_date: '2024-04-10', announcement_date: '2024-02-10' },
-            { year: '2023Q2', cash_dividend: 2.75, stock_dividend: 0, total_dividend: 2.75, ex_dividend_date: '2023-12-14', payment_date: '2024-01-11', announcement_date: '2023-11-10' },
-            { year: '2023Q1', cash_dividend: 2.75, stock_dividend: 0, total_dividend: 2.75, ex_dividend_date: '2023-09-14', payment_date: '2023-10-12', announcement_date: '2023-08-10' }
-        ],
-        '2324': [
-            { year: '2025', cash_dividend: 1.20, stock_dividend: 0, total_dividend: 1.20, ex_dividend_date: '2025-07-18', payment_date: '2025-08-15', announcement_date: '2025-03-15' },
-            { year: '2024', cash_dividend: 1.20, stock_dividend: 0, total_dividend: 1.20, ex_dividend_date: '2024-07-18', payment_date: '2024-08-16', announcement_date: '2024-03-15' },
-            { year: '2023', cash_dividend: 1.20, stock_dividend: 0, total_dividend: 1.20, ex_dividend_date: '2023-07-20', payment_date: '2023-08-18', announcement_date: '2023-03-15' },
-            { year: '2022', cash_dividend: 2.00, stock_dividend: 0, total_dividend: 2.00, ex_dividend_date: '2022-07-21', payment_date: '2022-08-19', announcement_date: '2022-03-15' },
-            { year: '2021', cash_dividend: 1.60, stock_dividend: 0, total_dividend: 1.60, ex_dividend_date: '2021-07-22', payment_date: '2021-08-20', announcement_date: '2021-03-15' }
-        ],
-        '2337': [
-            { year: '2024', cash_dividend: 0.50, stock_dividend: 0, total_dividend: 0.50, ex_dividend_date: '2024-07-18', payment_date: '2024-08-16', announcement_date: '2024-03-15' },
-            { year: '2023', cash_dividend: 1.80, stock_dividend: 0, total_dividend: 1.80, ex_dividend_date: '2023-07-20', payment_date: '2023-08-18', announcement_date: '2023-03-15' },
-            { year: '2022', cash_dividend: 1.80, stock_dividend: 0, total_dividend: 1.80, ex_dividend_date: '2022-07-21', payment_date: '2022-08-19', announcement_date: '2022-03-15' },
-            { year: '2021', cash_dividend: 1.20, stock_dividend: 0, total_dividend: 1.20, ex_dividend_date: '2021-07-22', payment_date: '2021-08-20', announcement_date: '2021-03-15' },
-            { year: '2020', cash_dividend: 1.20, stock_dividend: 0, total_dividend: 1.20, ex_dividend_date: '2020-07-23', payment_date: '2020-08-21', announcement_date: '2020-03-15' }
-        ],
-        '2886': [
-            { year: '2025', cash_dividend: 1.50, stock_dividend: 0.20, total_dividend: 1.70, ex_dividend_date: '2025-08-08', payment_date: '2025-09-12', announcement_date: '2025-04-25' },
-            { year: '2024', cash_dividend: 1.50, stock_dividend: 0.30, total_dividend: 1.80, ex_dividend_date: '2024-08-08', payment_date: '2024-09-13', announcement_date: '2024-04-26' },
-            { year: '2023', cash_dividend: 1.20, stock_dividend: 0.12, total_dividend: 1.32, ex_dividend_date: '2023-08-09', payment_date: '2023-09-15', announcement_date: '2023-04-25' },
-            { year: '2022', cash_dividend: 1.40, stock_dividend: 0.18, total_dividend: 1.58, ex_dividend_date: '2022-08-10', payment_date: '2022-09-16', announcement_date: '2022-04-26' },
-            { year: '2021', cash_dividend: 1.58, stock_dividend: 0.00, total_dividend: 1.58, ex_dividend_date: '2021-08-11', payment_date: '2021-09-17', announcement_date: '2021-04-27' }
-        ],
-        '5880': [
-            { year: '2025', cash_dividend: 0.65, stock_dividend: 0.35, total_dividend: 1.00, ex_dividend_date: '2025-08-15', payment_date: '2025-09-19', announcement_date: '2025-04-28' },
-            { year: '2024', cash_dividend: 0.65, stock_dividend: 0.35, total_dividend: 1.00, ex_dividend_date: '2024-08-15', payment_date: '2024-09-20', announcement_date: '2024-04-29' },
-            { year: '2023', cash_dividend: 0.50, stock_dividend: 0.50, total_dividend: 1.00, ex_dividend_date: '2023-08-16', payment_date: '2023-09-22', announcement_date: '2023-04-28' }
-        ],
-        '2002': [
-            { year: '2025', cash_dividend: 0.35, stock_dividend: 0.00, total_dividend: 0.35, ex_dividend_date: '2025-07-25', payment_date: '2025-08-28', announcement_date: '2025-03-20' },
-            { year: '2024', cash_dividend: 0.35, stock_dividend: 0.00, total_dividend: 0.35, ex_dividend_date: '2024-07-25', payment_date: '2024-08-29', announcement_date: '2024-03-20' },
-            { year: '2023', cash_dividend: 1.00, stock_dividend: 0.00, total_dividend: 1.00, ex_dividend_date: '2023-07-26', payment_date: '2023-08-30', announcement_date: '2023-03-21' }
-        ]
-    };
-
     // =========================================================================
-    // 11.5 股票歷年配息紀錄 (Supabase 優先查詢，歷史深度自動補齊並入庫)
+    // 11.5 股票歷年配息紀錄 (Supabase 優先直出 + 25 年智慧增量與深度偵測自動入庫)
     // =========================================================================
     async function loadStockDividends(stock) {
         if (!stock || !stock.id) return;
@@ -2847,8 +2731,10 @@ ${promptRules}
         const client = getSupabaseClient();
         let dividendList = [];
         let hitSupabase = false;
+        let latestAnnYear = null;
+        const currentYear = new Date().getFullYear();
 
-        // 1. Supabase 快取優先查詢
+        // 1. Supabase 快取優先查詢並 0 秒立刻渲染
         if (client) {
             try {
                 const { data: dbDividends, error } = await client
@@ -2860,23 +2746,52 @@ ${promptRules}
                 if (dbDividends && !error && dbDividends.length > 0) {
                     dividendList = dbDividends;
                     hitSupabase = true;
-                    console.log(`⚡ [Supabase 命中] 成功從 Supabase 載入 ${stock.name} ${dividendList.length} 筆歷年配息紀錄！`);
+                    // 取得 DB 中最新的公告年份或除息年份
+                    for (const d of dbDividends) {
+                        const yrMatch = (d.announcement_date || d.ex_dividend_date || d.year || '').match(/(\d{4})/);
+                        if (yrMatch) {
+                            latestAnnYear = parseInt(yrMatch[1], 10);
+                            break;
+                        }
+                    }
+                    console.log(`⚡ [Supabase 命中] 成功從 Supabase 載入 ${stock.name} ${dividendList.length} 筆歷年配息紀錄 (最新年份: ${latestAnnYear || '未知'})！`);
+                    
+                    // 立刻渲染現有配息列表，0 秒無感延遲
+                    renderDividendUI(dividendList, stock);
                 }
             } catch (e) {
                 console.warn("Supabase stock_dividends query error:", e);
             }
         }
 
-        // 2. 若 Supabase 無資料，連線 FinMind TaiwanStockDividend 抓取
-        if (!hitSupabase) {
+        // 2. 智慧增量與缺漏偵測：
+        // - 若完全無資料 ➔ 抓取 2000-01-01 至今 25 年完整全歷史
+        // - 若有資料但最新年份落後當前年份 (例如 latestAnnYear < currentYear) ➔ 只補齊近 1~2 年
+        // - 若已有資料且已是最新年份 ➔ 不發送 API 請求
+        let needFetch = false;
+        let fetchStartDate = '2000-01-01';
+
+        if (!hitSupabase || dividendList.length === 0) {
+            needFetch = true;
+            fetchStartDate = '2000-01-01';
+        } else if (latestAnnYear && latestAnnYear < currentYear) {
+            needFetch = true;
+            fetchStartDate = `${latestAnnYear - 1}-01-01`;
+        }
+
+        if (needFetch) {
             try {
-                console.log(`🌐 [API 抓取] 正在從 FinMind 抓取 ${stock.name} (${stock.id}) 歷年配息...`);
-                const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockDividend&data_id=${stock.id}&start_date=2010-01-01`);
+                console.log(`🌐 [API 智慧同步] 正在為 ${stock.name} (${stock.id}) 向 FinMind 查詢自 ${fetchStartDate} 起之歷年配息...`);
+                const apiUrl = buildFinMindUrl('TaiwanStockDividend', {
+                    data_id: stock.id,
+                    start_date: fetchStartDate
+                });
+                const res = await fetch(apiUrl);
                 const json = await res.json();
                 if (json.msg === 'success' && json.data && json.data.length > 0) {
                     const rawSorted = json.data.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
                     
-                    dividendList = rawSorted.map(item => {
+                    const fetchedList = rawSorted.map(item => {
                         const cash = parseFloat(item.CashEarningsDistribution || 0) + parseFloat(item.CashStatutorySurplus || 0);
                         const stk = parseFloat(item.StockEarningsDistribution || 0) + parseFloat(item.StockStatutorySurplus || 0);
                         const total = cash + stk;
@@ -2899,13 +2814,22 @@ ${promptRules}
                         };
                     });
 
-                    dividendList = enrichDividendList(dividendList);
-                    dividendList.forEach(item => {
+                    // 合併現有 DB 資料與新抓取資料
+                    const mergedMap = new Map();
+                    dividendList.forEach(item => mergedMap.set(item.id || `${stock.id}_${item.announcement_date}_${item.year}_${item.ex_dividend_date}`, item));
+                    fetchedList.forEach(item => mergedMap.set(item.id || `${stock.id}_${item.announcement_date}_${item.year}_${item.ex_dividend_date}`, item));
+                    
+                    let allDividends = Array.from(mergedMap.values());
+                    allDividends = enrichDividendList(allDividends);
+                    allDividends.forEach(item => {
                         if (item.formatted_period) {
                             item.year = item.formatted_period;
                         }
                     });
 
+                    dividendList = allDividends;
+
+                    // 自動整批入庫至 Supabase stock_dividends
                     if (client && dividendList.length > 0) {
                         try {
                             await client.from('stock_dividends').upsert(dividendList, { onConflict: 'id' });
@@ -2914,38 +2838,14 @@ ${promptRules}
                             console.warn("Supabase stock_dividends upsert exception:", insE);
                         }
                     }
+
+                    // 重新渲染最新配息表格與統計指標
+                    renderDividendUI(dividendList, stock);
+                } else if (json.msg && json.msg.includes('reach the upper limit')) {
+                    console.warn(`⚠️ FinMind API 限流提示：建議在「系統設定 (⚙️)」中填入免費 FinMind Token 享有每小時 600 次獨立額度。`);
                 }
             } catch (apiErr) {
                 console.error("FinMind dividend fetch error:", apiErr);
-            }
-        }
-
-        // 3. 歷史深度自動補齊：若 Supabase 現有資料較短（例如 0050 先前只有 5 筆），無縫合併備援全歷史
-        if (FALLBACK_DIVIDEND_MAP[stock.id]) {
-            const fallbackList = FALLBACK_DIVIDEND_MAP[stock.id].map(item => ({
-                id: `${stock.id}_${item.announcement_date}_${item.year}_${item.ex_dividend_date}`,
-                stock_id: stock.id,
-                ...item
-            }));
-
-            if (dividendList.length < fallbackList.length) {
-                const mapByEx = new Map();
-                // 優先使用備援庫的深層歷史
-                fallbackList.forEach(item => mapByEx.set(item.ex_dividend_date || item.year, item));
-                // 現有資料覆蓋（若有最新決議）
-                dividendList.forEach(item => mapByEx.set(item.ex_dividend_date || item.year, item));
-
-                dividendList = Array.from(mapByEx.values()).sort((a, b) => {
-                    const da = a.ex_dividend_date && a.ex_dividend_date !== '--' ? a.ex_dividend_date : (a.announcement_date || '');
-                    const db = b.ex_dividend_date && b.ex_dividend_date !== '--' ? b.ex_dividend_date : (b.announcement_date || '');
-                    return db.localeCompare(da);
-                });
-
-                if (client && dividendList.length > 0) {
-                    client.from('stock_dividends').upsert(dividendList, { onConflict: 'id' }).then(() => {
-                        console.log(`💾 [歷史補齊] 已為 ${stock.name} 補齊至 ${dividendList.length} 筆完整全歷史配息並入庫 Supabase！`);
-                    }).catch(err => console.warn("Depth upsert err:", err));
-                }
             }
         }
 
@@ -3424,7 +3324,7 @@ ${promptRules}
         try {
             const today = new Date().toISOString().split('T')[0];
             const past = new Date(); past.setDate(new Date().getDate() - 45);
-            const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanExchangeRate&data_id=USD&start_date=${past.toISOString().split('T')[0]}&end_date=${today}`);
+            const res = await fetch(buildFinMindUrl('TaiwanExchangeRate', { data_id: 'USD', start_date: past.toISOString().split('T')[0], end_date: today }));
             const json = await res.json();
             if (json.msg === 'success' && json.data && json.data.length > 0) {
                 const data = json.data.slice(-30);
@@ -3534,7 +3434,7 @@ ${promptRules}
             let apiList = [];
             try {
                 const targetCurrency = fromCurr === 'TWD' ? toCurr : fromCurr;
-                const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanExchangeRate&data_id=${targetCurrency}&start_date=${start}&end_date=${end}`);
+                const res = await fetch(buildFinMindUrl('TaiwanExchangeRate', { data_id: targetCurrency, start_date: start, end_date: end }));
                 const json = await res.json();
                 if (json.msg === 'success' && json.data && json.data.length > 0) {
                     apiList = json.data;
@@ -3660,7 +3560,7 @@ ${promptRules}
         if (missingDates.length > 0) {
             console.log(`🌐 [金價歷史補齊] 正在從 FinMind 官方資料庫抓取 ${start} ~ ${end} 歷史真實金價...`);
             try {
-                const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=GoldPrice&start_date=${start}&end_date=${end}`);
+                const res = await fetch(buildFinMindUrl('GoldPrice', { start_date: start, end_date: end }));
                 const json = await res.json();
                 if (json.msg === 'success' && json.data && json.data.length > 0) {
                     const dailyMap = new Map();
