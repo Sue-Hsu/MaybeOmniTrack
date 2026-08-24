@@ -2674,8 +2674,45 @@ ${promptRules}
         renderDividendUI(dividendList, stock);
     }
 
+    function cleanAndDeduplicateDividends(rawList) {
+        if (!rawList || rawList.length === 0) return [];
+
+        const exMap = new Map();
+
+        rawList.forEach(item => {
+            const exDate = (item.ex_dividend_date && item.ex_dividend_date !== '--') ? item.ex_dividend_date : '';
+            const payDate = (item.payment_date && item.payment_date !== '--') ? item.payment_date : '';
+            const annDate = (item.announcement_date && item.announcement_date !== '--') ? item.announcement_date : '';
+            const total = parseFloat(item.total_dividend) || (parseFloat(item.cash_dividend || 0) + parseFloat(item.stock_dividend || 0));
+
+            // 除息唯一鍵值：優先用 exDate，若無則用 payDate 或 annDate
+            const key = exDate || payDate || annDate || Math.random().toString();
+
+            if (exMap.has(key)) {
+                const existing = exMap.get(key);
+                const existingTotal = parseFloat(existing.total_dividend) || (parseFloat(existing.cash_dividend || 0) + parseFloat(existing.stock_dividend || 0));
+                
+                // 優先保留配息金額 > 0 的有效決議；若金額相同則保留公告日較新的紀錄
+                if (total > existingTotal || (total === existingTotal && (annDate > (existing.announcement_date || '')))) {
+                    exMap.set(key, item);
+                }
+            } else {
+                exMap.set(key, item);
+            }
+        });
+
+        // 依除息日/公告日反向排序 (最新在最前)
+        return Array.from(exMap.values()).sort((a, b) => {
+            const da = a.ex_dividend_date || a.payment_date || a.announcement_date || '';
+            const db = b.ex_dividend_date || b.payment_date || b.announcement_date || '';
+            return db.localeCompare(da);
+        });
+    }
+
     function enrichDividendList(list) {
         if (!list || list.length === 0) return list;
+        // 先執行除息日去重與無效 0 股利過濾
+        list = cleanAndDeduplicateDividends(list);
 
         // 1. 按西元年度分組收集所有紀錄
         const yearGroups = {};
@@ -2698,7 +2735,7 @@ ${promptRules}
             }
         });
 
-        // 2. 計算歷史最高單年配息次數以判斷頻率
+        // 2. 計算歷史各年配息次數以判斷頻率
         const counts = Object.values(yearGroups).map(arr => arr.length);
         const maxCount = Math.max(1, ...counts);
 
@@ -2739,7 +2776,9 @@ ${promptRules}
                     row.formatted_period = `${yStr}/${mm}`;
                 } else if (freq === 'quarterly') {
                     let q = 1;
-                    if (monthVal) {
+                    if (rows.length === 4) {
+                        q = idx + 1;
+                    } else if (monthVal) {
                         q = Math.ceil(monthVal / 3);
                     } else {
                         q = Math.min(4, idx + 1);
@@ -2747,10 +2786,10 @@ ${promptRules}
                     row.formatted_period = `${yStr}Q${q}`;
                 } else if (freq === 'half') {
                     let h = 1;
-                    if (monthVal) {
-                        h = monthVal <= 6 ? 1 : 2;
-                    } else {
+                    if (rows.length >= 2) {
                         h = idx === 0 ? 1 : 2;
+                    } else {
+                        h = monthVal <= 8 ? 1 : 2;
                     }
                     row.formatted_period = `${yStr}H${h}`;
                 } else {
