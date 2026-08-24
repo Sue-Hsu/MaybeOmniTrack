@@ -397,11 +397,14 @@
                     <button class="filter-chip" data-filter="high-pass"><i class="fa-solid fa-circle-check"></i> 8項以上達標</button>
                 </div>
                 
-                <div class="search-stock-box" style="display: flex; gap: 0.5rem; align-items: center;">
-                    <div style="position: relative; flex: 1;">
+                <div class="search-stock-box" style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                    <div style="position: relative; flex: 1; min-width: 200px;">
                         <i class="fa-solid fa-magnifying-glass search-icon"></i>
                         <input type="text" id="stock-search-input" placeholder="搜尋股票代碼或名稱 (如 2886 兆豐金)...">
                     </div>
+                    <button class="secondary-btn" id="btn-refresh-all-stocks" style="white-space: nowrap; padding: 0.55rem 0.85rem; font-size: 0.85rem; border-radius: 8px; cursor: pointer;" title="一鍵同步所有股票最新收盤價">
+                        <i class="fa-solid fa-arrows-rotate"></i> 更新最新股價
+                    </button>
                     <button class="primary-btn" id="btn-open-add-stock-modal" style="white-space: nowrap; padding: 0.55rem 1rem; font-size: 0.85rem;">
                         <i class="fa-solid fa-plus"></i> 新增股票
                     </button>

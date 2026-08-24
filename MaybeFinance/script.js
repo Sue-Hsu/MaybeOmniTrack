@@ -1241,6 +1241,12 @@ ${promptRules}
 
         btnCloseStockModal.addEventListener('click', () => stockChartModal.style.display = 'none');
 
+        // 一鍵同步所有股票今日最新現價
+        const btnRefreshAllStocks = document.getElementById('btn-refresh-all-stocks');
+        if (btnRefreshAllStocks) {
+            btnRefreshAllStocks.addEventListener('click', () => refreshAllStockPrices(true));
+        }
+
         // 打開新增股票彈窗
         btnOpenAddStockModal.addEventListener('click', () => {
             if (!state.currentUser) {
@@ -1575,6 +1581,65 @@ ${promptRules}
         });
 
         renderStocks();
+    }
+
+    // 批量連線 FinMind 抓取所有股票最新收盤價並同步更新至 Supabase
+    async function refreshAllStockPrices(showNotice = false) {
+        if (!STOCKS_DATA || STOCKS_DATA.length === 0) {
+            if (showNotice) alert('目前尚未加入任何股票標的，請先點擊「+ 新增股票」！');
+            return;
+        }
+
+        const btnRefresh = document.getElementById('btn-refresh-all-stocks');
+        if (btnRefresh) {
+            btnRefresh.disabled = true;
+            btnRefresh.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> 股價更新中...';
+        }
+
+        const today = new Date().toISOString().split('T')[0];
+        const past = new Date(); past.setDate(new Date().getDate() - 10);
+        const pastStr = past.toISOString().split('T')[0];
+        const client = getSupabaseClient();
+        let updatedCount = 0;
+
+        for (const stock of STOCKS_DATA) {
+            try {
+                const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${stock.id}&start_date=${pastStr}&end_date=${today}`);
+                const json = await res.json();
+                if (json.msg === 'success' && json.data && json.data.length > 0) {
+                    const latest = json.data[json.data.length - 1];
+                    stock.price = parseFloat(latest.close);
+                    
+                    // 若有每股獲利與配息率，即時重算最新現金殖利率
+                    if (stock.eps5y && stock.payoutRatio && stock.price > 0) {
+                        const estimatedDiv = (stock.eps5y * stock.payoutRatio) / 100;
+                        stock.yield = parseFloat(((estimatedDiv / stock.price) * 100).toFixed(2));
+                    }
+
+                    if (client) {
+                        await client.from('stocks').update({
+                            price: stock.price,
+                            dividend_yield: stock.yield,
+                            updated_at: new Date()
+                        }).eq('stock_id', stock.id);
+                    }
+                    updatedCount++;
+                }
+            } catch (e) {
+                console.warn(`更新 ${stock.name} (${stock.id}) 股價失敗:`, e);
+            }
+        }
+
+        renderStocks();
+
+        if (btnRefresh) {
+            btnRefresh.disabled = false;
+            btnRefresh.innerHTML = '<i class="fa-solid fa-arrows-rotate"></i> 更新最新股價';
+        }
+
+        if (showNotice) {
+            alert(`🎉 成功同步 ${updatedCount} 檔股票的最新收盤價與即時殖利率！已存入 Supabase。`);
+        }
     }
 
     function evaluateStockHealth(stock) {
