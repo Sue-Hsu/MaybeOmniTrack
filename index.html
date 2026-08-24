@@ -382,7 +382,7 @@
                 <button class="btn-close-modal" id="btn-close-add-stock-modal"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="modal-body">
-                <p class="text-sm text-muted">輸入台股代碼或名稱（例如 <code>2886</code> 或 <code>兆豐金</code>），系統將連線 FinMind 抓取股價與財務數據，並透過 <strong>Google Gemini AI</strong> 依據 4 本經典存股書籍規則自動產出屬性與大白話診斷！</p>
+                <p class="text-sm text-muted">輸入台股代碼或名稱（例如 <code>2886</code> 或 <code>兆豐金</code>），系統將連線 FinMind 抓取股價與財務數據，並透過 <strong>Google Gemini AI</strong> 依據 5 大維度存股指標自動產出屬性與大白話診斷！</p>
                 
                 <div class="form-row" style="margin-top: 0.75rem;">
                     <div class="form-group" style="flex: 2;">
@@ -429,7 +429,7 @@
 
                 <div class="form-group">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
-                        <label for="add-stock-diagnosis" style="margin-bottom: 0;">AI 存股大師診斷評語 (依 4 本經典法則分析)</label>
+                        <label for="add-stock-diagnosis" style="margin-bottom: 0;">AI 存股診斷評語 (依 5 大維度法則分析)</label>
                         <button type="button" class="secondary-btn" id="btn-ai-diagnose-stock" style="padding: 0.2rem 0.6rem; font-size: 0.75rem; border-radius: 6px; cursor: pointer; color: #2563eb;">
                             <i class="fa-solid fa-wand-magic-sparkles"></i> 觸發 Gemini AI 重新分析
                         </button>
@@ -607,8 +607,8 @@
 
                     <div class="form-group">
                         <label for="admin-gemini-prompt">AI 存股健檢法則與提示詞 (可隨時在此調整或擴充存股規則)</label>
-                        <textarea id="admin-gemini-prompt" rows="5" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0.5rem; font-size: 0.8rem; font-family: monospace;"></textarea>
-                        <small style="color: #64748b; font-size: 0.75rem;">系統預設載入 <code>docs/stock_selection_rules.md</code> 4 本經典存股書籍法則，您可自由新增修改，儲存後自動同步至 Firebase 保險庫。</small>
+                        <textarea id="admin-gemini-prompt" rows="5" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0.5rem; font-size: 0.8rem; font-family: monospace;" placeholder="在此自訂您的專屬存股診斷規則與評估準則..."></textarea>
+                        <small style="color: #64748b; font-size: 0.75rem;">可在此自訂您的專屬存股診斷規則，儲存後將自動加密同步至 Firebase 保險庫（不公開於程式碼中）。</small>
                     </div>
 
                 <!-- 4. Firebase 機密保險庫 (儲存 Supabase Key 與特定帳密) -->
