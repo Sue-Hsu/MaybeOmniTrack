@@ -2083,11 +2083,28 @@ ${promptRules}
                     const latest = json.data[json.data.length - 1];
                     stock.price = parseFloat(latest.close);
                     
-                    // 若有每股獲利與配息率，即時重算最新現金殖利率
-                    if (stock.eps5y && stock.payoutRatio && stock.price > 0) {
-                        const estimatedDiv = (stock.eps5y * stock.payoutRatio) / 100;
-                        stock.yield = parseFloat(((estimatedDiv / stock.price) * 100).toFixed(2));
+                    // 優先採用真實最新配息計算即時現金殖利率，避免 fallback EPS 偏差
+                    let calculatedYield = stock.yield;
+                    if (client) {
+                        try {
+                            const { data: divRows } = await client
+                                .from('stock_dividends')
+                                .select('cash_dividend')
+                                .eq('stock_id', stock.id)
+                                .order('announcement_date', { ascending: false })
+                                .limit(1);
+                            if (divRows && divRows.length > 0 && divRows[0].cash_dividend > 0 && stock.price > 0) {
+                                calculatedYield = parseFloat(((parseFloat(divRows[0].cash_dividend) / stock.price) * 100).toFixed(2));
+                            }
+                        } catch (divErr) {
+                            console.warn("Real dividend fetch for yield calculation fallback", divErr);
+                        }
                     }
+                    if (!calculatedYield && stock.eps5y && stock.payoutRatio && stock.price > 0 && stock.eps5y > 0) {
+                        const estimatedDiv = (stock.eps5y * stock.payoutRatio) / 100;
+                        calculatedYield = parseFloat(((estimatedDiv / stock.price) * 100).toFixed(2));
+                    }
+                    if (calculatedYield) stock.yield = calculatedYield;
 
                     if (client) {
                         await client.from('stocks').update({
