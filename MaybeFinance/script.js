@@ -2528,85 +2528,11 @@ ${promptRules}
     }
 
     // =========================================================================
-    // 11. 股票歷史行情圖表 (Supabase 優先查詢，未命中才呼叫 FinMind 並自動入庫)
+    // 11. 股票歷史行情圖表 (Supabase 優先直出 + 智慧增量缺漏補齊機制)
     // =========================================================================
-    async function renderStockChart(stock) {
-        let chartData = [];
-        const today = new Date();
-        const pastDate = new Date();
-        pastDate.setDate(today.getDate() - state.chartRange);
-        const startStr = pastDate.toISOString().split('T')[0];
-
-        const client = getSupabaseClient();
-
-        let hitSupabase = false;
-        if (client) {
-            try {
-                const { data: dbPrices, error } = await client
-                    .from('stock_prices')
-                    .select('*')
-                    .eq('stock_id', stock.id)
-                    .gte('trade_date', startStr)
-                    .order('trade_date', { ascending: true });
-                
-                if (dbPrices && !error && dbPrices.length > 0) {
-                    chartData = dbPrices.map(d => ({
-                        date: d.trade_date,
-                        close: parseFloat(d.close_price),
-                        open: parseFloat(d.open_price || d.close_price),
-                        high: parseFloat(d.high_price || d.close_price),
-                        low: parseFloat(d.low_price || d.close_price)
-                    }));
-                    hitSupabase = true;
-                    console.log(`⚡ [Supabase 命中] 成功從 Supabase 載入 ${stock.name} ${chartData.length} 筆歷史收盤價！`);
-                }
-            } catch (e) {
-                console.warn("Supabase stock_prices read error:", e);
-            }
-        }
-
-        if (!hitSupabase) {
-            console.log(`🌐 [API 抓取] 正在從 FinMind 抓取 ${stock.name} (${stock.id}) 歷史日 K...`);
-            try {
-                const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${stock.id}&start_date=${startStr}`);
-                const json = await res.json();
-                if (json.msg === 'success' && json.data && json.data.length > 0) {
-                    chartData = json.data.map(d => ({
-                        date: d.date,
-                        close: d.close,
-                        open: d.open,
-                        high: d.max,
-                        low: d.min
-                    }));
-
-                    if (client) {
-                        const rowsToInsert = json.data.map(d => ({
-                            stock_id: stock.id,
-                            trade_date: d.date,
-                            open_price: d.open,
-                            high_price: d.max,
-                            low_price: d.min,
-                            close_price: d.close,
-                            volume: d.Trading_Volume || d.Trading_Turnover || 0
-                        }));
-                        client.from('stock_prices').upsert(rowsToInsert, { onConflict: 'stock_id,trade_date' }).then(() => {
-                            console.log(`💾 [自動入庫] 已將 ${stock.name} ${rowsToInsert.length} 筆日 K 同步存入 Supabase！`);
-                        });
-                    }
-                } else {
-                    console.warn(`FinMind API 未回傳 ${stock.name} (${stock.id}) 的歷史 K 線數據`);
-                }
-            } catch (e) {
-                console.warn(`FinMind API 抓取失敗:`, e);
-            }
-        }
-
+    function drawStockChartUI(chartData, stock) {
         if (stockChartInstance) stockChartInstance.destroy();
-
-        if (chartData.length === 0) {
-            console.warn(`目前尚無 ${stock.name} (${stock.id}) 的歷史 K 線數據`);
-            return;
-        }
+        if (!chartData || chartData.length === 0) return;
 
         const labels = chartData.map(d => d.date);
         const closes = chartData.map(d => d.close);
@@ -2654,6 +2580,118 @@ ${promptRules}
                     interaction: { mode: 'index', intersect: false }
                 }
             });
+        }
+    }
+
+    async function renderStockChart(stock) {
+        let chartData = [];
+        const today = new Date();
+        const todayStr = today.toISOString().split('T')[0];
+        const pastDate = new Date();
+        pastDate.setDate(today.getDate() - state.chartRange);
+        const startStr = pastDate.toISOString().split('T')[0];
+
+        const client = getSupabaseClient();
+        let latestDbDate = null;
+
+        // 1. 優先從 Supabase 讀取目前已有之歷史資料並立刻繪圖（0 秒無感延遲）
+        if (client) {
+            try {
+                const { data: dbPrices, error } = await client
+                    .from('stock_prices')
+                    .select('*')
+                    .eq('stock_id', stock.id)
+                    .gte('trade_date', startStr)
+                    .order('trade_date', { ascending: true });
+                
+                if (dbPrices && !error && dbPrices.length > 0) {
+                    chartData = dbPrices.map(d => ({
+                        date: d.trade_date,
+                        close: parseFloat(d.close_price),
+                        open: parseFloat(d.open_price || d.close_price),
+                        high: parseFloat(d.high_price || d.close_price),
+                        low: parseFloat(d.low_price || d.close_price)
+                    }));
+                    latestDbDate = dbPrices[dbPrices.length - 1].trade_date;
+                    console.log(`⚡ [Supabase 命中] 成功從 Supabase 載入 ${stock.name} ${chartData.length} 筆歷史收盤價 (最新至 ${latestDbDate})！`);
+                    
+                    // 立刻繪製現有資料
+                    drawStockChartUI(chartData, stock);
+                }
+            } catch (e) {
+                console.warn("Supabase stock_prices read error:", e);
+            }
+        }
+
+        // 2. 智慧增量判定：檢查最新日期是否落後，只請求缺漏區間
+        let needSync = false;
+        let fetchStartStr = startStr;
+
+        if (!latestDbDate) {
+            // DB 完全無資料 ➔ 抓取全區間
+            needSync = true;
+            fetchStartStr = startStr;
+        } else {
+            const latestObj = new Date(latestDbDate);
+            const diffDays = Math.floor((today - latestObj) / (1000 * 60 * 60 * 24));
+            const dayOfWeek = today.getDay(); // 0 是週日, 6 是週六
+            
+            // 若最新日期落後超過 1 天（且非正常週末休市），只需補齊「最新日期隔天 ~ 今天」的少量缺漏
+            const isWeekendNoTrade = latestObj.getDay() === 5 && (dayOfWeek === 6 || dayOfWeek === 0);
+            if (diffDays > 0 && !isWeekendNoTrade) {
+                needSync = true;
+                const nextDay = new Date(latestObj);
+                nextDay.setDate(nextDay.getDate() + 1);
+                fetchStartStr = nextDay.toISOString().split('T')[0];
+            }
+        }
+
+        // 3. 執行增量抓取與自動入庫
+        if (needSync) {
+            console.log(`🌐 [增量同步] 正在為 ${stock.name} (${stock.id}) 補齊 ${fetchStartStr} ~ ${todayStr} 之最新日 K...`);
+            try {
+                const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${stock.id}&start_date=${fetchStartStr}&end_date=${todayStr}`);
+                const json = await res.json();
+                if (json.msg === 'success' && json.data && json.data.length > 0) {
+                    const newItems = json.data.map(d => ({
+                        date: d.date,
+                        close: parseFloat(d.close),
+                        open: parseFloat(d.open),
+                        high: parseFloat(d.max),
+                        low: parseFloat(d.min)
+                    }));
+
+                    // 合併去重並排序
+                    const existingMap = new Map();
+                    chartData.forEach(d => existingMap.set(d.date, d));
+                    newItems.forEach(d => existingMap.set(d.date, d));
+                    chartData = Array.from(existingMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+
+                    if (client) {
+                        const rowsToInsert = newItems.map(d => ({
+                            stock_id: stock.id,
+                            trade_date: d.date,
+                            open_price: d.open,
+                            high_price: d.high,
+                            low_price: d.low,
+                            close_price: d.close,
+                            volume: d.Trading_Volume || d.Trading_Turnover || 0
+                        }));
+                        client.from('stock_prices').upsert(rowsToInsert, { onConflict: 'stock_id,trade_date' }).then(() => {
+                            console.log(`💾 [增量入庫] 成功將 ${stock.name} 補齊的 ${rowsToInsert.length} 筆最新日 K 存入 Supabase！`);
+                        });
+                    }
+
+                    // 重新繪製包含最新數據的圖表
+                    drawStockChartUI(chartData, stock);
+                }
+            } catch (e) {
+                console.warn(`FinMind API 增量抓取失敗:`, e);
+            }
+        }
+
+        if (chartData.length === 0) {
+            console.warn(`目前尚無 ${stock.name} (${stock.id}) 的歷史 K 線數據`);
         }
     }
 
