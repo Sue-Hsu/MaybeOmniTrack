@@ -2836,11 +2836,30 @@ ${promptRules}
 
                     dividendList = allDividends;
 
-                    // 自動整批入庫至 Supabase stock_dividends
+                    // 自動整批入庫至 Supabase stock_dividends (嚴格過濾多餘前端欄位，確保 100% 符合 DB Schema)
                     if (client && dividendList.length > 0) {
                         try {
-                            await client.from('stock_dividends').upsert(dividendList, { onConflict: 'id' });
-                            console.log(`💾 [自動入庫] 成功將 ${stock.name} ${dividendList.length} 筆配息紀錄寫入 Supabase stock_dividends！`);
+                            const cleanRowsToUpsert = dividendList.map(item => ({
+                                id: item.id || `${stock.id}_${item.announcement_date || ''}_${item.year || ''}_${item.ex_dividend_date || 'noex'}`.replace(/\s+/g, '_'),
+                                stock_id: stock.id,
+                                year: item.formatted_period || item.year || '',
+                                cash_dividend: parseFloat(item.cash_dividend || 0),
+                                stock_dividend: parseFloat(item.stock_dividend || 0),
+                                total_dividend: parseFloat(item.total_dividend || 0),
+                                ex_dividend_date: item.ex_dividend_date || '--',
+                                payment_date: item.payment_date || '--',
+                                announcement_date: item.announcement_date || ''
+                            }));
+
+                            const { error: upsertErr } = await client
+                                .from('stock_dividends')
+                                .upsert(cleanRowsToUpsert, { onConflict: 'id' });
+                            
+                            if (upsertErr) {
+                                console.error("❌ Supabase stock_dividends upsert error:", upsertErr);
+                            } else {
+                                console.log(`💾 [自動入庫] 成功將 ${stock.name} ${cleanRowsToUpsert.length} 筆配息紀錄寫入 Supabase stock_dividends！`);
+                            }
                         } catch (insE) {
                             console.warn("Supabase stock_dividends upsert exception:", insE);
                         }
