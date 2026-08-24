@@ -2722,10 +2722,18 @@ ${promptRules}
         const exMap = new Map();
 
         rawList.forEach(item => {
+            const cash = parseFloat(item.cash_dividend || 0);
+            const stk = parseFloat(item.stock_dividend || 0);
+            const total = parseFloat(item.total_dividend) || (cash + stk);
+
+            // 嚴格過濾非配息紀錄（現金股利與股票股利皆為 0 的現金增資除權或無配發公告）
+            if (cash <= 0 && stk <= 0 && total <= 0) {
+                return;
+            }
+
             const exDate = (item.ex_dividend_date && item.ex_dividend_date !== '--') ? item.ex_dividend_date : '';
             const payDate = (item.payment_date && item.payment_date !== '--') ? item.payment_date : '';
             const annDate = (item.announcement_date && item.announcement_date !== '--') ? item.announcement_date : '';
-            const total = parseFloat(item.total_dividend) || (parseFloat(item.cash_dividend || 0) + parseFloat(item.stock_dividend || 0));
 
             // 除息唯一鍵值：優先用 exDate，若無則用 payDate 或 annDate
             const key = exDate || payDate || annDate || Math.random().toString();
