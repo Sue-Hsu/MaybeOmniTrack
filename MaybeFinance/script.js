@@ -2838,9 +2838,15 @@ ${promptRules}
                 const safeCash = parseFloat(item.cash_dividend || 0).toFixed(2);
                 const safeStk = parseFloat(item.stock_dividend || 0).toFixed(2);
                 const safeTotal = parseFloat(item.total_dividend || 0).toFixed(2);
-                const safeEx = escapeHtml(item.ex_dividend_date || '--');
-                const safePay = escapeHtml(item.payment_date || '--');
-                const safeAnn = escapeHtml(item.announcement_date || '--');
+                const safeEx = (item.ex_dividend_date && item.ex_dividend_date !== '--') 
+                    ? escapeHtml(item.ex_dividend_date.replace(/-/g, '/')) 
+                    : '--';
+                const safePay = (item.payment_date && item.payment_date !== '--') 
+                    ? escapeHtml(item.payment_date.replace(/-/g, '/')) 
+                    : '--';
+                const safeAnn = (item.announcement_date && item.announcement_date !== '--') 
+                    ? escapeHtml(item.announcement_date.replace(/-/g, '/')) 
+                    : '--';
 
                 return `
                     <tr>
@@ -2850,12 +2856,12 @@ ${promptRules}
                                 ${payDateSubtext}
                             </div>
                         </td>
-                        <td style="color: #15803d; font-weight: 700; vertical-align: middle;">NT$ ${safeCash}</td>
-                        <td style="color: #4338ca; vertical-align: middle;">${safeStk} 股</td>
-                        <td style="color: #0f172a; font-weight: 700; vertical-align: middle;">NT$ ${safeTotal}</td>
-                        <td style="vertical-align: middle;">${safeEx}</td>
-                        <td style="vertical-align: middle;"><span style="color: #059669; font-weight: 600;">${safePay}</span></td>
-                        <td style="color: #64748b; font-size: 0.75rem; vertical-align: middle;">${safeAnn}</td>
+                        <td style="color: #15803d; font-weight: 700; vertical-align: middle; white-space: nowrap;">NT$ ${safeCash}</td>
+                        <td style="color: #4338ca; vertical-align: middle; white-space: nowrap;">${safeStk} 股</td>
+                        <td style="color: #0f172a; font-weight: 700; vertical-align: middle; white-space: nowrap;">NT$ ${safeTotal}</td>
+                        <td style="vertical-align: middle; white-space: nowrap; font-family: ui-monospace, monospace;">${safeEx}</td>
+                        <td style="vertical-align: middle; white-space: nowrap; font-family: ui-monospace, monospace;"><span style="color: #059669; font-weight: 600;">${safePay}</span></td>
+                        <td style="color: #64748b; font-size: 0.78rem; vertical-align: middle; white-space: nowrap; font-family: ui-monospace, monospace;">${safeAnn}</td>
                     </tr>
                 `;
             }).join('');
