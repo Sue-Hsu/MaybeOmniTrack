@@ -2667,23 +2667,42 @@ ${promptRules}
 
     function calculateAnnualCashDividend(dividendList) {
         if (!dividendList || dividendList.length === 0) return 0;
-        const yearCashMap = {};
+
+        // 判斷是否為季配息 / 半年配 / 月配息（特徵：年度文字含「季/月/半年/Q」或同一年度內出現多次配息）
+        const yearCountMap = {};
+        let isMultiPeriod = false;
+
         dividendList.forEach(item => {
             const yr = (item.year || '').trim();
+            if (yr.includes('季') || yr.includes('半年') || yr.includes('Q') || yr.includes('月')) {
+                isMultiPeriod = true;
+            }
             const yKey = yr.slice(0, 4);
             if (yKey) {
-                yearCashMap[yKey] = (yearCashMap[yKey] || 0) + (parseFloat(item.cash_dividend) || 0);
+                yearCountMap[yKey] = (yearCountMap[yKey] || 0) + 1;
+                if (yearCountMap[yKey] > 1) {
+                    isMultiPeriod = true;
+                }
             }
         });
-        const yearlyVals = Object.values(yearCashMap);
-        let annualCash = yearlyVals.length > 0 ? yearlyVals[0] : 0;
-        if (dividendList.length >= 4) {
-            const sumLatest4 = dividendList.slice(0, 4).reduce((sum, r) => sum + (parseFloat(r.cash_dividend) || 0), 0);
-            if (sumLatest4 > annualCash && annualCash < parseFloat(dividendList[0].cash_dividend) * 2) {
-                annualCash = sumLatest4;
+
+        if (isMultiPeriod) {
+            // 季配／半年配／月配息（如台積電 2330、00878、00919、00929）：
+            // 加總最新 4 季（或近 1 年的所有配息）作為近 1 年年化現金股利
+            const periodsToSum = Math.min(dividendList.length, 4);
+            const sumLatestPeriods = dividendList.slice(0, periodsToSum).reduce((sum, r) => sum + (parseFloat(r.cash_dividend) || 0), 0);
+            return sumLatestPeriods;
+        } else {
+            // 年配息標的（如中鋼 2002、兆豐金 2886、廣達 2382、玉山金 2884）：
+            // 嚴禁跨年累加！直接取最新一年的真實單年現金股利
+            for (let i = 0; i < dividendList.length; i++) {
+                const cash = parseFloat(dividendList[i].cash_dividend) || 0;
+                if (cash > 0) {
+                    return cash;
+                }
             }
+            return parseFloat(dividendList[0].cash_dividend) || 0;
         }
-        return annualCash > 0 ? annualCash : (parseFloat(dividendList[0].cash_dividend) || 0);
     }
 
     function renderDividendUI(list, stock) {
