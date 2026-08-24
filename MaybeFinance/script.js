@@ -1263,7 +1263,20 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch("https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo");
             const json = await res.json();
             if (json.msg === 'success' && json.data) {
-                cachedFinMindStockList = json.data;
+                // 依 stock_id 智慧去重，並優先保留細部產業類別
+                const uniqueMap = new Map();
+                for (const item of json.data) {
+                    if (!item.stock_id) continue;
+                    if (!uniqueMap.has(item.stock_id)) {
+                        uniqueMap.set(item.stock_id, item);
+                    } else {
+                        const existing = uniqueMap.get(item.stock_id);
+                        if (existing.industry_category === '電子工業' && item.industry_category !== '電子工業') {
+                            uniqueMap.set(item.stock_id, item);
+                        }
+                    }
+                }
+                cachedFinMindStockList = Array.from(uniqueMap.values());
                 return cachedFinMindStockList;
             }
         } catch (e) {
