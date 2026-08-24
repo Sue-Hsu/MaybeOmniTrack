@@ -1881,17 +1881,22 @@ ${promptRules}
                         });
                     }
                 } else {
-                    throw new Error("No data");
+                    console.warn(`FinMind API 未回傳 ${stock.name} (${stock.id}) 的歷史 K 線數據`);
                 }
             } catch (e) {
-                chartData = generateStockMockHistory(stock.price, state.chartRange);
+                console.warn(`FinMind API 抓取失敗:`, e);
             }
+        }
+
+        if (stockChartInstance) stockChartInstance.destroy();
+
+        if (chartData.length === 0) {
+            console.warn(`目前尚無 ${stock.name} (${stock.id}) 的歷史 K 線數據`);
+            return;
         }
 
         const labels = chartData.map(d => d.date);
         const closes = chartData.map(d => d.close);
-
-        if (stockChartInstance) stockChartInstance.destroy();
 
         if (state.chartType === 'line') {
             stockChartInstance = new Chart(stockModalChartCtx, {
@@ -1937,29 +1942,6 @@ ${promptRules}
                 }
             });
         }
-    }
-
-    function generateStockMockHistory(currentPrice, days) {
-        const list = [];
-        let price = currentPrice * 0.92;
-        const now = new Date();
-        for (let i = days; i >= 0; i--) {
-            const d = new Date();
-            d.setDate(now.getDate() - i);
-            if (d.getDay() !== 0 && d.getDay() !== 6) {
-                const change = (Math.random() - 0.48) * (currentPrice * 0.02);
-                price += change;
-                const open = price - (Math.random() - 0.5) * 0.5;
-                list.push({
-                    date: d.toISOString().split('T')[0],
-                    close: parseFloat(price.toFixed(2)),
-                    open: parseFloat(open.toFixed(2)),
-                    high: parseFloat((Math.max(price, open) + 0.3).toFixed(2)),
-                    low: parseFloat((Math.min(price, open) - 0.3).toFixed(2))
-                });
-            }
-        }
-        return list;
     }
 
     // =========================================================================
@@ -2094,17 +2076,28 @@ ${promptRules}
 
                 loadingEl.style.display = 'none';
                 dataContentEl.style.display = 'block';
+            } else {
+                loadingEl.style.display = 'none';
+                dataContentEl.style.display = 'block';
+                sellRateEl.textContent = '--';
+                buyRateEl.textContent = '--';
+                avgRateEl.textContent = '--';
+                sellInsightEl.className = 'insight-status bad';
+                sellInsightEl.querySelector('.status-text').textContent = '暫無即時匯率，請點擊查詢';
+                buyInsightEl.className = 'insight-status bad';
+                buyInsightEl.querySelector('.status-text').textContent = '暫無即時匯率，請點擊查詢';
             }
         } catch (e) {
+            console.warn("FinMind Fx insights fetch error:", e);
             loadingEl.style.display = 'none';
             dataContentEl.style.display = 'block';
-            sellRateEl.textContent = '32.450';
-            buyRateEl.textContent = '32.350';
-            avgRateEl.textContent = '32.500';
-            sellInsightEl.className = 'insight-status good';
-            sellInsightEl.querySelector('.status-text').textContent = '便宜！現在換外幣出國划算';
-            buyInsightEl.className = 'insight-status good';
-            buyInsightEl.querySelector('.status-text').textContent = '賺到！現在換回台幣划算';
+            sellRateEl.textContent = '--';
+            buyRateEl.textContent = '--';
+            avgRateEl.textContent = '--';
+            sellInsightEl.className = 'insight-status bad';
+            sellInsightEl.querySelector('.status-text').textContent = '連線異常，請稍後點擊重新整理';
+            buyInsightEl.className = 'insight-status bad';
+            buyInsightEl.querySelector('.status-text').textContent = '連線異常，請稍後點擊重新整理';
         }
     }
 
@@ -2156,9 +2149,9 @@ ${promptRules}
             cur.setDate(cur.getDate() + 1);
         }
 
-        // 3. 若有缺漏日期，向 FinMind 抓取並自動補齊入庫
+        // 3. 若有缺漏日期，向 FinMind 抓取真實數據並自動入庫
         if (missingDates.length > 0) {
-            console.log(`🌐 [匯率補充] 發現 Supabase 缺少 ${missingDates.length} 天匯率，正在向 API 抓取補齊...`);
+            console.log(`🌐 [匯率補充] 正在向 FinMind API 抓取 ${fromCurr} -> ${toCurr} 真實匯率...`);
             let apiList = [];
             try {
                 const targetCurrency = fromCurr === 'TWD' ? toCurr : fromCurr;
@@ -2166,11 +2159,9 @@ ${promptRules}
                 const json = await res.json();
                 if (json.msg === 'success' && json.data && json.data.length > 0) {
                     apiList = json.data;
-                } else {
-                    apiList = generateMockFx(start, end);
                 }
             } catch (e) {
-                apiList = generateMockFx(start, end);
+                console.warn("FinMind fetch error:", e);
             }
 
             const rowsToInsert = [];
@@ -2200,15 +2191,27 @@ ${promptRules}
                 if (upsertErr) {
                     console.error("Supabase exchange_rates upsert error:", upsertErr);
                 } else {
-                    console.log(`💾 [自動入庫] 成功將 ${rowsToInsert.length} 筆補齊之匯率快取至 Supabase！`);
+                    console.log(`💾 [真實入庫] 成功將 ${rowsToInsert.length} 筆 FinMind 真實匯率寫入 Supabase！`);
                 }
             }
         }
 
         list = Array.from(existingMap.values()).sort((a, b) => a.date.localeCompare(b.date));
-        if (list.length === 0) list = generateMockFx(start, end);
 
         if (fxChartInstance) fxChartInstance.destroy();
+
+        if (list.length === 0) {
+            historyTbody.innerHTML = `
+                <tr>
+                    <td colspan="3" style="text-align: center; color: #64748b; padding: 2rem;">
+                        <i class="fa-solid fa-circle-info" style="margin-bottom: 0.5rem; display: block; font-size: 1.25rem;"></i>
+                        Supabase 尚無此幣別在該區間的歷史匯率。請點擊「查詢匯率」由 FinMind API 即時抓取真實數據！
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
         fxChartInstance = new Chart(historyChartCtx, {
             type: 'line',
             data: {
@@ -2441,34 +2444,6 @@ ${promptRules}
                 scales: scales
             }
         });
-    }
-
-    function generateMockFx(start, end) {
-        const list = [];
-        let cur = new Date(start); const endObj = new Date(end);
-        let s = 32.5;
-        while (cur <= endObj) {
-            if (cur.getDay() !== 0 && cur.getDay() !== 6) {
-                s += (Math.random() - 0.5) * 0.15;
-                list.push({ date: cur.toISOString().split('T')[0], spot_sell: s, spot_buy: s - 0.1 });
-            }
-            cur.setDate(cur.getDate() + 1);
-        }
-        return list;
-    }
-
-    function generateMockGold(start, end) {
-        const list = [];
-        let cur = new Date(start); const endObj = new Date(end);
-        let u = 4635;
-        while (cur <= endObj) {
-            if (cur.getDay() !== 0 && cur.getDay() !== 6) {
-                u += (Math.random() - 0.48) * 20;
-                list.push({ date: cur.toISOString().split('T')[0], usd: u, twd: (u * 32.5) / 31.1035 });
-            }
-            cur.setDate(cur.getDate() + 1);
-        }
-        return list;
     }
 
     // 啟動應用程式
