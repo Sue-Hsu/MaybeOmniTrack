@@ -439,7 +439,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // 儲存管理員後台設定
-        btnSaveAdminSettings.addEventListener('click', () => {
+        btnSaveAdminSettings.addEventListener('click', async () => {
             state.config.customUser = adminCustomUser.value.trim() || 'admin';
             state.config.customPass = adminCustomPass.value.trim() || '123456';
             state.config.supabaseUrl = adminSupabaseUrl.value.trim();
@@ -449,10 +449,67 @@ document.addEventListener('DOMContentLoaded', () => {
             state.config.adminGoogleEmails = adminGoogleEmails.value.trim();
 
             localStorage.setItem('maybe_omni_config', JSON.stringify(state.config));
+            
+            // 重置 client 並同步寫入 Supabase
+            supabaseClient = null;
+            await saveSettingsToSupabase();
+
             adminModal.style.display = 'none';
             initGoogleIdentityServices();
-            alert('✅ 雲端與系統設定儲存成功！管理員白名單與金鑰已即時生效。');
+            alert('✅ 雲端與系統設定儲存成功！特定帳密與 API 金鑰已即時同步至 Supabase 雲端！');
         });
+    }
+
+    let supabaseClient = null;
+
+    function getSupabaseClient() {
+        if (supabaseClient) return supabaseClient;
+        if (state.config.supabaseUrl && state.config.supabaseKey && window.supabase) {
+            try {
+                supabaseClient = window.supabase.createClient(state.config.supabaseUrl, state.config.supabaseKey);
+                return supabaseClient;
+            } catch (e) {
+                console.warn("Supabase client init error", e);
+            }
+        }
+        return null;
+    }
+
+    async function syncSettingsFromSupabase() {
+        const client = getSupabaseClient();
+        if (!client) return;
+        try {
+            const { data, error } = await client.from('system_settings').select('*');
+            if (data && !error && data.length > 0) {
+                data.forEach(row => {
+                    if (row.key === 'custom_user') state.config.customUser = row.value;
+                    if (row.key === 'custom_pass') state.config.customPass = row.value;
+                    if (row.key === 'gold_key') state.config.goldApiKey = row.value;
+                    if (row.key === 'admin_emails') state.config.adminGoogleEmails = row.value;
+                    if (row.key === 'google_client_id') state.config.googleClientId = row.value;
+                });
+                localStorage.setItem('maybe_omni_config', JSON.stringify(state.config));
+            }
+        } catch (e) {
+            console.warn("Settings sync from Supabase error", e);
+        }
+    }
+
+    async function saveSettingsToSupabase() {
+        const client = getSupabaseClient();
+        if (!client) return;
+        try {
+            const settingsRows = [
+                { key: 'custom_user', value: state.config.customUser },
+                { key: 'custom_pass', value: state.config.customPass },
+                { key: 'gold_key', value: state.config.goldApiKey },
+                { key: 'admin_emails', value: state.config.adminGoogleEmails },
+                { key: 'google_client_id', value: state.config.googleClientId }
+            ];
+            await client.from('system_settings').upsert(settingsRows);
+        } catch (e) {
+            console.warn("Save settings to Supabase error", e);
+        }
     }
 
     function createMockJwt(email) {
