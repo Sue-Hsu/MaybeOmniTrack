@@ -560,7 +560,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (supabaseClient) return supabaseClient;
         if (state.config.supabaseUrl && state.config.supabaseKey && window.supabase) {
             try {
-                supabaseClient = window.supabase.createClient(state.config.supabaseUrl, state.config.supabaseKey);
+                let cleanUrl = state.config.supabaseUrl.trim().replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
+                supabaseClient = window.supabase.createClient(cleanUrl, state.config.supabaseKey.trim());
                 return supabaseClient;
             } catch (e) {
                 console.warn("Supabase client init error", e);
