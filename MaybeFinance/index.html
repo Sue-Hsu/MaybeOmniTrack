@@ -859,9 +859,8 @@
                                 <i class="fa-solid fa-copy"></i> 複製 SQL
                             </button>
                         </div>
-                        <textarea id="sql-app-users-code" readonly rows="3" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0.5rem; font-family: monospace; font-size: 0.75rem; background: #ffffff;">CREATE TABLE IF NOT EXISTS app_users (
-    id BIGSERIAL PRIMARY KEY,
-    email TEXT UNIQUE NOT NULL,
+                        <textarea id="sql-app-users-code" readonly rows="4" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0.5rem; font-family: monospace; font-size: 0.75rem; background: #ffffff;">CREATE TABLE IF NOT EXISTS app_users (
+    email TEXT PRIMARY KEY,
     name TEXT,
     role TEXT DEFAULT 'user',
     status TEXT DEFAULT 'pending',
@@ -870,8 +869,10 @@
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_app_users_email ON app_users(email);
-CREATE INDEX IF NOT EXISTS idx_app_users_status ON app_users(status);</textarea>
+CREATE INDEX IF NOT EXISTS idx_app_users_status ON app_users(status);
+ALTER TABLE app_users ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public access on app_users" ON app_users;
+CREATE POLICY "Public access on app_users" ON app_users FOR ALL USING (true) WITH CHECK (true);</textarea>
                     </div>
                 </div>
             </div>

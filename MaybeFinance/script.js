@@ -7,8 +7,18 @@
 
 document.addEventListener('DOMContentLoaded', () => {
     // =========================================================================
-    // 1. 全域狀態與資料庫
+    // 1. 全域狀態與安全轉義函式
     // =========================================================================
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
     const state = {
         currentUser: null, // { name: '', email: '', role: 'admin' | 'user' }
         activeTab: 'view-fx',
@@ -886,18 +896,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? '<span class="status-badge-pending"><i class="fa-solid fa-clock"></i> 待審核</span>'
                 : '<span class="status-badge-rejected"><i class="fa-solid fa-ban"></i> 已停用</span>';
 
-            const createdStr = u.created_at ? new Date(u.created_at).toLocaleString('zh-TW', { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '--';
+            const safeEmail = escapeHtml(u.email);
+            const safeName = escapeHtml(u.name || '--');
+            const safeProvider = escapeHtml(u.provider || 'google');
+            const safeNote = escapeHtml(u.note || '');
 
             return `
                 <tr>
                     <td>${statusBadge}</td>
-                    <td><strong>${u.email}</strong> ${u.role === 'admin' ? '<span style="color: #d97706; font-size: 0.75rem;">(👑管理員)</span>' : ''}</td>
-                    <td>${u.name || '--'}</td>
-                    <td><span style="color: #64748b; font-size: 0.75rem;">${u.provider || 'google'}</span></td>
+                    <td><strong>${safeEmail}</strong> ${u.role === 'admin' ? '<span style="color: #d97706; font-size: 0.75rem;">(👑管理員)</span>' : ''}</td>
+                    <td>${safeName}</td>
+                    <td><span style="color: #64748b; font-size: 0.75rem;">${safeProvider}</span></td>
                     <td style="color: #64748b; font-size: 0.75rem;">${createdStr}</td>
                     <td>
-                        <span class="user-note-text" style="cursor: pointer; color: #2563eb;" title="點擊編輯備註" data-id="${u.id || ''}" data-email="${u.email}" data-note="${u.note || ''}">
-                            ${u.note ? u.note : '<em style="color: #94a3b8;">+ 點此加備註</em>'}
+                        <span class="user-note-text" style="cursor: pointer; color: #2563eb;" title="點擊編輯備註" data-id="${escapeHtml(u.id || '')}" data-email="${safeEmail}" data-note="${safeNote}">
+                            ${safeNote ? safeNote : '<em style="color: #94a3b8;">+ 點此加備註</em>'}
                         </span>
                     </td>
                     <td>
@@ -2168,19 +2181,23 @@ ${promptRules}
             else if (stock.category === 'cashflow') catBadge = `<span class="category-badge category-cashflow"><i class="fa-solid fa-money-bill-wave"></i> 💰 適合領高利息</span>`;
             else catBadge = `<span class="category-badge category-swing"><i class="fa-solid fa-bolt"></i> 🚀 適合波段賺價差</span>`;
 
+            const safeId = escapeHtml(stock.id);
+            const safeName = escapeHtml(stock.name);
+            const safeDiagnosis = escapeHtml(stock.diagnosis);
+
             const card = document.createElement('div');
             card.className = 'stock-card';
             card.innerHTML = `
                 <div class="stock-card-header">
                     <div class="stock-title-wrap">
-                        <div class="stock-code-name">${stock.id} ${stock.name}</div>
+                        <div class="stock-code-name">${safeId} ${safeName}</div>
                         <div class="stock-price-display">NT$ ${stock.price.toFixed(2)}</div>
                     </div>
                     <div style="display: flex; gap: 0.35rem; align-items: center;">
-                        <button class="btn-star-fav ${isFav ? 'favorited' : ''}" data-id="${stock.id}" title="${isFav ? '移出自選' : '加入自選'}">
+                        <button class="btn-star-fav ${isFav ? 'favorited' : ''}" data-id="${safeId}" title="${isFav ? '移出自選' : '加入自選'}">
                             <i class="fa-${isFav ? 'solid' : 'regular'} fa-star"></i>
                         </button>
-                        <button class="btn-star-fav btn-delete-stock" data-id="${stock.id}" title="從健檢庫刪除" style="color: #ef4444;">
+                        <button class="btn-star-fav btn-delete-stock" data-id="${safeId}" title="從健檢庫刪除" style="color: #ef4444;">
                             <i class="fa-solid fa-trash-can"></i>
                         </button>
                     </div>
@@ -2199,7 +2216,7 @@ ${promptRules}
                 </div>
 
                 <div class="diagnosis-box">
-                    <i class="fa-solid fa-wand-magic-sparkles" style="color: var(--accent-blue);"></i> <strong>AI 存股診斷：</strong>${stock.diagnosis}
+                    <i class="fa-solid fa-wand-magic-sparkles" style="color: var(--accent-blue);"></i> <strong>AI 存股診斷：</strong>${safeDiagnosis}
                 </div>
 
                 <div class="metrics-pill-grid">
