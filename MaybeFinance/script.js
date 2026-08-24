@@ -1400,33 +1400,56 @@ ${promptRules}
         let pe = 16.0;
         let diag = '';
 
+        // 主動嘗試連線 FinMind TaiwanStockPER 抓取真實本益比(PER)、淨值比(PBR)與殖利率
+        try {
+            const todayStr = new Date().toISOString().split('T')[0];
+            const past10 = new Date(); past10.setDate(new Date().getDate() - 10);
+            const past10Str = past10.toISOString().split('T')[0];
+            const pRes = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPER&data_id=${code}&start_date=${past10Str}&end_date=${todayStr}`);
+            const pJson = await pRes.json();
+            if (pJson.msg === 'success' && pJson.data && pJson.data.length > 0) {
+                const latestP = pJson.data[pJson.data.length - 1];
+                if (latestP.PER !== undefined && latestP.PER !== null && !isNaN(parseFloat(latestP.PER))) {
+                    pe = parseFloat(parseFloat(latestP.PER).toFixed(2));
+                }
+                if (latestP.PBR !== undefined && latestP.PBR !== null && !isNaN(parseFloat(latestP.PBR))) {
+                    pb = parseFloat(parseFloat(latestP.PBR).toFixed(2));
+                }
+                if (latestP.dividend_yield !== undefined && latestP.dividend_yield !== null && !isNaN(parseFloat(latestP.dividend_yield))) {
+                    y = parseFloat(parseFloat(latestP.dividend_yield).toFixed(2));
+                }
+            }
+        } catch (perErr) {
+            console.warn(`FinMind PER fetch for ${code} fallback:`, perErr);
+        }
+
         if (isGov) {
             category = 'dividend';
             beta = 0.45;
             divYears = 20;
             payoutRatio = 82.0;
-            y = 5.2;
+            if (!y) y = 5.2;
             diag = `${name} (${code})：官股/防禦型龍頭！Beta 僅約 ${beta} 極為抗跌，連續配息逾 ${divYears} 年，符合穩健存股 5 大維度標準，為安心長抱首選。`;
         } else if (isEtf) {
             category = 'cashflow';
             beta = 0.72;
             divYears = 6;
             payoutRatio = 90.0;
-            y = 6.5;
+            if (!y) y = 6.5;
             diag = `${name} (${code})：人氣指數型/高股息 ETF，產業分散且現金流充沛，年化殖利率約 ${y}%，符合定期領息與被動現金流原則。`;
         } else if (isFinancial) {
             category = 'cashflow';
             beta = 0.65;
             divYears = 15;
             payoutRatio = 80.0;
-            y = 5.5;
+            if (!y) y = 5.5;
             diag = `${name} (${code})：金融權值指標股，資訊透明且月月公布獲利，殖利率高於 5% 買進安全線，適合定期定額累積被動收入。`;
         } else {
             category = price > 150 ? 'swing' : 'dividend';
             beta = price > 150 ? 1.2 : 0.75;
             divYears = 10;
             payoutRatio = 72.0;
-            y = price > 150 ? 2.5 : 4.8;
+            if (!y) y = price > 150 ? 2.5 : 4.8;
             diag = `${name} (${code})：產業龍頭標的，獲利動能明確，${category === 'swing' ? '波動較大適合逢低波段操作賺取價差' : '配息穩定適合長期分批佈局'}。`;
         }
 
@@ -2184,12 +2207,29 @@ ${promptRules}
                         const estimatedDiv = (stock.eps5y * stock.payoutRatio) / 100;
                         calculatedYield = parseFloat(((estimatedDiv / stock.price) * 100).toFixed(2));
                     }
-                    if (calculatedYield) stock.yield = calculatedYield;
+                    // 同步向 FinMind 抓取最新真實 PER (本益比) 與 PBR (股價淨值比)
+                    try {
+                        const perRes = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPER&data_id=${stock.id}&start_date=${pastStr}&end_date=${today}`);
+                        const perJson = await perRes.json();
+                        if (perJson.msg === 'success' && perJson.data && perJson.data.length > 0) {
+                            const latestPer = perJson.data[perJson.data.length - 1];
+                            if (latestPer.PER !== undefined && latestPer.PER !== null && !isNaN(parseFloat(latestPer.PER))) {
+                                stock.pe = parseFloat(parseFloat(latestPer.PER).toFixed(2));
+                            }
+                            if (latestPer.PBR !== undefined && latestPer.PBR !== null && !isNaN(parseFloat(latestPer.PBR))) {
+                                stock.pb = parseFloat(parseFloat(latestPer.PBR).toFixed(2));
+                            }
+                        }
+                    } catch (perErr) {
+                        console.warn(`Fetch PER/PBR for ${stock.id} error:`, perErr);
+                    }
 
                     if (client) {
                         await client.from('stocks').update({
                             price: stock.price,
                             dividend_yield: stock.yield,
+                            pe_ratio: stock.pe,
+                            pb_ratio: stock.pb,
                             updated_at: new Date()
                         }).eq('stock_id', stock.id);
                     }
