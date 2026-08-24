@@ -130,81 +130,6 @@
                 </div>
             </section>
 
-            <!-- 📐 存股核心指標計算公式速查卡 (預設收合 Collapsible) -->
-            <section class="rules-summary-section glass-panel" style="margin-top: 0.75rem;">
-                <div class="rules-header" id="formulas-toggle-btn" style="cursor: pointer;">
-                    <div class="rules-title">
-                        <h2><i class="fa-solid fa-calculator" style="color: #2563eb;"></i> 📐 存股指標計算公式速查（殖利率、盈餘分配率、本益比、PB...）</h2>
-                        <span class="rules-subtitle">（點擊展開/收合算法說明）</span>
-                    </div>
-                    <i class="fa-solid fa-chevron-down toggle-icon" id="formulas-toggle-icon"></i>
-                </div>
-                
-                <div class="rules-body" id="formulas-body-content" style="display: none;">
-                    <div class="rules-grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));">
-                        <!-- 1. 現金殖利率 -->
-                        <div class="rule-card" style="border-left: 3px solid #16a34a;">
-                            <div class="rule-card-title" style="color: #15803d;"><i class="fa-solid fa-hand-holding-dollar"></i> 1. 現金殖利率 (Dividend Yield)</div>
-                            <div style="background: #f0fdf4; padding: 0.35rem 0.5rem; border-radius: 6px; font-family: monospace; font-size: 0.8rem; font-weight: 700; color: #166534; margin-bottom: 0.4rem;">
-                                現金股利 (元) ÷ 當前股價 (元) × 100%
-                            </div>
-                            <p style="font-size: 0.78rem; color: #475569; margin-bottom: 0.25rem;"><strong>💡 範例：</strong>若股價 100 元，配發 5 元現金 ➔ <code>(5 ÷ 100) × 100% = 5.0%</code>。</p>
-                            <p style="font-size: 0.75rem; color: #166534; margin: 0;"><strong>🎯 評估：</strong><code>≥ 5%</code> 屬便宜好買點；<code>&lt; 5%</code> 代表股價偏貴，建議暫緩或分批佈局。</p>
-                        </div>
-
-                        <!-- 2. 盈餘分配率 -->
-                        <div class="rule-card" style="border-left: 3px solid #2563eb;">
-                            <div class="rule-card-title" style="color: #1d4ed8;"><i class="fa-solid fa-chart-pie"></i> 2. 盈餘分配率 (Payout Ratio)</div>
-                            <div style="background: #eff6ff; padding: 0.35rem 0.5rem; border-radius: 6px; font-family: monospace; font-size: 0.8rem; font-weight: 700; color: #1e40af; margin-bottom: 0.4rem;">
-                                每股現金股利 (元) ÷ 每股盈餘 EPS (元) × 100%
-                            </div>
-                            <p style="font-size: 0.78rem; color: #475569; margin-bottom: 0.25rem;"><strong>💡 範例：</strong>EPS 賺 4 元，配發 3 元現金 ➔ <code>(3 ÷ 4) × 100% = 75%</code>。</p>
-                            <p style="font-size: 0.75rem; color: #1e40af; margin: 0;"><strong>🎯 評估：</strong>衡量賺 100 元分給股東多少。<code>≥ 70%</code> 代表公司大方不小氣。</p>
-                        </div>
-
-                        <!-- 3. 本益比 PE -->
-                        <div class="rule-card" style="border-left: 3px solid #d97706;">
-                            <div class="rule-card-title" style="color: #b45309;"><i class="fa-solid fa-hourglass-half"></i> 3. 本益比 (PE Ratio)</div>
-                            <div style="background: #fffbeb; padding: 0.35rem 0.5rem; border-radius: 6px; font-family: monospace; font-size: 0.8rem; font-weight: 700; color: #92400e; margin-bottom: 0.4rem;">
-                                當前股價 (元) ÷ 近 4 季累計 EPS (元)
-                            </div>
-                            <p style="font-size: 0.78rem; color: #475569; margin-bottom: 0.25rem;"><strong>💡 範例：</strong>股價 60 元，全年 EPS 4 元 ➔ <code>60 ÷ 4 = 15 倍</code>。</p>
-                            <p style="font-size: 0.75rem; color: #92400e; margin: 0;"><strong>🎯 評估：</strong>買進後約幾年能回本。存股以 <code>&lt; 15 ~ 20 倍</code> 為合理便宜區間。</p>
-                        </div>
-
-                        <!-- 4. 股價淨值比 PB -->
-                        <div class="rule-card" style="border-left: 3px solid #6366f1;">
-                            <div class="rule-card-title" style="color: #4338ca;"><i class="fa-solid fa-building-columns"></i> 4. 股價淨值比 (PB Ratio)</div>
-                            <div style="background: #eef2ff; padding: 0.35rem 0.5rem; border-radius: 6px; font-family: monospace; font-size: 0.8rem; font-weight: 700; color: #3730a3; margin-bottom: 0.4rem;">
-                                當前股價 (元) ÷ 每股淨值 (元)
-                            </div>
-                            <p style="font-size: 0.78rem; color: #475569; margin-bottom: 0.25rem;"><strong>💡 範例：</strong>股價 30 元，每股淨值 20 元 ➔ <code>30 ÷ 20 = 1.5 倍</code>。</p>
-                            <p style="font-size: 0.75rem; color: #3730a3; margin: 0;"><strong>🎯 評估：</strong>衡量相對於資產價值的溢價。存股以 <code>&lt; 1.5 ~ 2.0 倍</code> 較具安全邊際。</p>
-                        </div>
-
-                        <!-- 5. Beta 波動度 -->
-                        <div class="rule-card" style="border-left: 3px solid #8b5cf6;">
-                            <div class="rule-card-title" style="color: #6d28d9;"><i class="fa-solid fa-wave-square"></i> 5. Beta 波動度 (Beta 係數)</div>
-                            <div style="background: #f5f3ff; padding: 0.35rem 0.5rem; border-radius: 6px; font-family: monospace; font-size: 0.8rem; font-weight: 700; color: #5b21b6; margin-bottom: 0.4rem;">
-                                個股漲跌幅相對於大盤加權指數的連動敏感度
-                            </div>
-                            <p style="font-size: 0.78rem; color: #475569; margin-bottom: 0.25rem;"><strong>💡 概念：</strong><code>&lt; 0.8</code>（如金融股 0.5~0.6）代表牛皮防禦、大跌時抗跌；<code>&gt; 1.2</code> 代表波動大適合波段。</p>
-                            <p style="font-size: 0.75rem; color: #5b21b6; margin: 0;"><strong>🎯 評估：</strong>存股首選 <code>Beta &lt; 0.8</code>，安心睡覺不焦慮盯盤。</p>
-                        </div>
-
-                        <!-- 6. 連續配息年數 -->
-                        <div class="rule-card" style="border-left: 3px solid #ec4899;">
-                            <div class="rule-card-title" style="color: #be185d;"><i class="fa-solid fa-calendar-check"></i> 6. 連續配息年數</div>
-                            <div style="background: #fdf2f8; padding: 0.35rem 0.5rem; border-radius: 6px; font-family: monospace; font-size: 0.8rem; font-weight: 700; color: #9d174d; margin-bottom: 0.4rem;">
-                                歷年連續不中斷發放現金／股票股利之年數
-                            </div>
-                            <p style="font-size: 0.78rem; color: #475569; margin-bottom: 0.25rem;"><strong>💡 概念：</strong>能跨越 2008 金融海嘯、2020 疫情等多輪大衰退依然賺錢分紅。</p>
-                            <p style="font-size: 0.75rem; color: #9d174d; margin: 0;"><strong>🎯 評估：</strong>存股標的以 <code>≥ 10 年</code> 最佳，代表護城河極深。</p>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
             <!-- 股票篩選工具列 -->
             <section class="stocks-toolbar glass-panel">
                 <!-- 頂部資訊列：Gemini AI 調用額度 (位於全部標的上方) -->
@@ -1039,6 +964,92 @@ ALTER TABLE stock_dividends ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Public access on stock_dividends" ON stock_dividends;
 CREATE POLICY "Public access on stock_dividends" ON stock_dividends FOR ALL USING (true) WITH CHECK (true);</textarea>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 浮動面板：存股指標計算公式速查 (Floating Action Panel) -->
+    <!-- ========================================== -->
+    <div id="floating-formula-container" class="floating-formula-container">
+        <!-- 浮動展開按鈕 (預設常駐畫面右下角，隨頁面滾動) -->
+        <button id="floating-formula-btn" class="floating-formula-btn" title="點擊展開存股指標計算公式速查">
+            <i class="fa-solid fa-calculator"></i>
+            <span>📐 指標公式速查</span>
+        </button>
+
+        <!-- 浮動卡片面板 (預設收合 display: none) -->
+        <div id="floating-formula-panel" class="floating-formula-card" style="display: none;">
+            <div class="floating-formula-header">
+                <div class="floating-formula-title">
+                    <i class="fa-solid fa-calculator" style="color: #2563eb;"></i>
+                    <span>存股指標計算公式速查</span>
+                </div>
+                <button class="btn-close-formula" id="btn-close-formula-panel" title="收合面板">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            
+            <div class="floating-formula-body">
+                <!-- 1. 現金殖利率 -->
+                <div class="formula-item-card" style="border-left: 3px solid #16a34a;">
+                    <div class="formula-item-title" style="color: #15803d;"><i class="fa-solid fa-hand-holding-dollar"></i> 1. 現金殖利率 (Dividend Yield)</div>
+                    <div class="formula-box" style="background: #f0fdf4; color: #166534;">
+                        現金股利 (元) ÷ 當前股價 (元) × 100%
+                    </div>
+                    <p class="formula-example"><strong>💡 範例：</strong>若股價 100 元，配發 5 元現金 ➔ <code>(5 ÷ 100) × 100% = 5.0%</code>。</p>
+                    <p class="formula-eval" style="color: #166534;"><strong>🎯 評估：</strong><code>≥ 5%</code> 屬便宜好買點；<code>&lt; 5%</code> 代表股價偏貴，建議暫緩或分批。</p>
+                </div>
+
+                <!-- 2. 盈餘分配率 -->
+                <div class="formula-item-card" style="border-left: 3px solid #2563eb;">
+                    <div class="formula-item-title" style="color: #1d4ed8;"><i class="fa-solid fa-chart-pie"></i> 2. 盈餘分配率 (Payout Ratio)</div>
+                    <div class="formula-box" style="background: #eff6ff; color: #1e40af;">
+                        每股現金股利 (元) ÷ 每股盈餘 EPS (元) × 100%
+                    </div>
+                    <p class="formula-example"><strong>💡 範例：</strong>EPS 賺 4 元，配發 3 元現金 ➔ <code>(3 ÷ 4) × 100% = 75%</code>。</p>
+                    <p class="formula-eval" style="color: #1e40af;"><strong>🎯 評估：</strong>衡量賺 100 元分給股東多少。<code>≥ 70%</code> 代表公司大方不小氣。</p>
+                </div>
+
+                <!-- 3. 本益比 PE -->
+                <div class="formula-item-card" style="border-left: 3px solid #d97706;">
+                    <div class="formula-item-title" style="color: #b45309;"><i class="fa-solid fa-hourglass-half"></i> 3. 本益比 (PE Ratio)</div>
+                    <div class="formula-box" style="background: #fffbeb; color: #92400e;">
+                        當前股價 (元) ÷ 近 4 季累計 EPS (元)
+                    </div>
+                    <p class="formula-example"><strong>💡 範例：</strong>股價 60 元，全年 EPS 4 元 ➔ <code>60 ÷ 4 = 15 倍</code>。</p>
+                    <p class="formula-eval" style="color: #92400e;"><strong>🎯 評估：</strong>買進後約幾年能回本。存股以 <code>&lt; 15 ~ 20 倍</code> 為合理便宜區間。</p>
+                </div>
+
+                <!-- 4. 股價淨值比 PB -->
+                <div class="formula-item-card" style="border-left: 3px solid #6366f1;">
+                    <div class="formula-item-title" style="color: #4338ca;"><i class="fa-solid fa-building-columns"></i> 4. 股價淨值比 (PB Ratio)</div>
+                    <div class="formula-box" style="background: #eef2ff; color: #3730a3;">
+                        當前股價 (元) ÷ 每股淨值 (元)
+                    </div>
+                    <p class="formula-example"><strong>💡 範例：</strong>股價 30 元，每股淨值 20 元 ➔ <code>30 ÷ 20 = 1.5 倍</code>。</p>
+                    <p class="formula-eval" style="color: #3730a3;"><strong>🎯 評估：</strong>衡量相對於資產價值的溢價。存股以 <code>&lt; 1.5 ~ 2.0 倍</code> 較具安全邊際。</p>
+                </div>
+
+                <!-- 5. Beta 波動度 -->
+                <div class="formula-item-card" style="border-left: 3px solid #8b5cf6;">
+                    <div class="formula-item-title" style="color: #6d28d9;"><i class="fa-solid fa-wave-square"></i> 5. Beta 波動度 (Beta 係數)</div>
+                    <div class="formula-box" style="background: #f5f3ff; color: #5b21b6;">
+                        個股漲跌幅相對於大盤加權指數的連動敏感度
+                    </div>
+                    <p class="formula-example"><strong>💡 概念：</strong><code>&lt; 0.8</code>（如金融股 0.5~0.6）代表牛皮抗跌；<code>&gt; 1.2</code> 波動大適合波段。</p>
+                    <p class="formula-eval" style="color: #5b21b6;"><strong>🎯 評估：</strong>存股首選 <code>Beta &lt; 0.8</code>，安心睡覺不焦慮盯盤。</p>
+                </div>
+
+                <!-- 6. 連續配息年數 -->
+                <div class="formula-item-card" style="border-left: 3px solid #ec4899;">
+                    <div class="formula-item-title" style="color: #be185d;"><i class="fa-solid fa-calendar-check"></i> 6. 連續配息年數</div>
+                    <div class="formula-box" style="background: #fdf2f8; color: #9d174d;">
+                        歷年連續不中斷發放現金／股票股利之年數
+                    </div>
+                    <p class="formula-example"><strong>💡 概念：</strong>能跨越 2008 金融海嘯、2020 疫情等多輪大衰退依然賺錢分紅。</p>
+                    <p class="formula-eval" style="color: #9d174d;"><strong>🎯 評估：</strong>存股標的以 <code>≥ 10 年</code> 最佳，代表護城河極深。</p>
                 </div>
             </div>
         </div>

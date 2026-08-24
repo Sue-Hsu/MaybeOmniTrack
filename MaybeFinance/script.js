@@ -127,9 +127,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const rulesToggleBtn = document.getElementById('rules-toggle-btn');
     const rulesBodyContent = document.getElementById('rules-body-content');
     const rulesToggleIcon = document.getElementById('rules-toggle-icon');
-    const formulasToggleBtn = document.getElementById('formulas-toggle-btn');
-    const formulasBodyContent = document.getElementById('formulas-body-content');
-    const formulasToggleIcon = document.getElementById('formulas-toggle-icon');
+    const floatingFormulaContainer = document.getElementById('floating-formula-container');
+    const floatingFormulaBtn = document.getElementById('floating-formula-btn');
+    const floatingFormulaPanel = document.getElementById('floating-formula-panel');
+    const btnCloseFormulaPanel = document.getElementById('btn-close-formula-panel');
     const stocksContainer = document.getElementById('stocks-container');
     const stockSearchInput = document.getElementById('stock-search-input');
     const filterChips = document.querySelectorAll('.filter-chip');
@@ -294,6 +295,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 tabStocks.classList.add('active');
                 viewStocks.style.display = 'block';
                 renderStocks();
+            }
+
+            if (floatingFormulaContainer) {
+                floatingFormulaContainer.style.display = (target === 'view-stocks') ? 'block' : 'none';
+            }
+            if (floatingFormulaPanel && target !== 'view-stocks') {
+                floatingFormulaPanel.style.display = 'none';
             }
         };
 
@@ -1446,13 +1454,30 @@ ${promptRules}
             rulesToggleIcon.classList.toggle('rotate', isHidden);
         });
 
-        if (formulasToggleBtn && formulasBodyContent && formulasToggleIcon) {
-            formulasToggleBtn.addEventListener('click', () => {
-                const isHidden = formulasBodyContent.style.display === 'none';
-                formulasBodyContent.style.display = isHidden ? 'block' : 'none';
-                formulasToggleIcon.classList.toggle('rotate', isHidden);
+        // 浮動公式面板事件監聽
+        if (floatingFormulaBtn && floatingFormulaPanel) {
+            floatingFormulaBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isClosed = floatingFormulaPanel.style.display === 'none';
+                floatingFormulaPanel.style.display = isClosed ? 'flex' : 'none';
             });
         }
+
+        if (btnCloseFormulaPanel && floatingFormulaPanel) {
+            btnCloseFormulaPanel.addEventListener('click', (e) => {
+                e.stopPropagation();
+                floatingFormulaPanel.style.display = 'none';
+            });
+        }
+
+        // 點擊面板外部自動關閉
+        document.addEventListener('click', (e) => {
+            if (floatingFormulaPanel && floatingFormulaPanel.style.display === 'flex') {
+                if (!floatingFormulaPanel.contains(e.target) && !floatingFormulaBtn.contains(e.target)) {
+                    floatingFormulaPanel.style.display = 'none';
+                }
+            }
+        });
 
         filterChips.forEach(chip => {
             chip.addEventListener('click', () => {
