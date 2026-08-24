@@ -1,7 +1,7 @@
 /**
- * MaybeOmniTrack - 財務白癡救星 全功能核心程式碼
+ * 財務看看 (MaybeOmniTrack / MaybeFinance) - 全功能核心程式碼
  * 包含：外幣匯率（支援多幣別換算 from_currency / to_currency）、黃金牌告、
- *       股票存股健檢（預設為空、未登入鎖定、FinMind 多股票搜尋選擇、Google Gemini 3.6/3.7 Flash AI 智能診斷）、
+ *       股票存股健檢（預設為空、未登入鎖定、FinMind 多股票搜尋選擇、Google Gemini 3.7/2.0/1.5 Flash AI 智能診斷）、
  *       Google OAuth / 特定帳號雙登入、Firebase 機密保險庫、Supabase 關聯資料庫（支援 ID 主鍵與 onConflict 智慧快取）
  */
 
