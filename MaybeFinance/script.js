@@ -2669,7 +2669,7 @@ ${promptRules}
     function formatDividendYear(rawYear, payDate, exDate) {
         if (!rawYear || rawYear === '--') {
             const fallbackYear = (payDate && payDate !== '--') ? payDate.slice(0, 4) : ((exDate && exDate !== '--') ? exDate.slice(0, 4) : '');
-            return fallbackYear ? `${fallbackYear}年` : '--';
+            return fallbackYear || '--';
         }
 
         let str = String(rawYear).trim();
@@ -2718,7 +2718,7 @@ ${promptRules}
         // 若為民國年 (小於 1900，例如 114, 113, 112, 98)，一律轉為西元年 (西元 = 民國 + 1911)
         const adYear = yearNum < 1900 ? yearNum + 1911 : yearNum;
 
-        // 組合標準西元年格式 (例如 2025Q4、2026H1、2012/05、2025年)
+        // 組合標準西元年格式 (例如 2025Q4、2026H1、2012/05、2026) - 依照需求不加「年」字
         if (quarter) {
             return `${adYear}Q${quarter}`;
         } else if (half) {
@@ -2726,7 +2726,7 @@ ${promptRules}
         } else if (month) {
             return `${adYear}/${month}`;
         } else {
-            return `${adYear}年`;
+            return `${adYear}`;
         }
     }
 
@@ -2822,10 +2822,18 @@ ${promptRules}
             stockDividendTbody.innerHTML = list.map(item => {
                 const formattedYear = formatDividendYear(item.year, item.payment_date, item.ex_dividend_date);
                 const safeYear = escapeHtml(formattedYear);
-                const payYear = (item.payment_date && item.payment_date !== '--') 
-                    ? item.payment_date.slice(0, 4) 
-                    : ((item.ex_dividend_date && item.ex_dividend_date !== '--') ? item.ex_dividend_date.slice(0, 4) : '');
-                const payYearBadge = payYear ? `<span style="font-size: 0.72rem; color: #64748b; font-weight: normal; margin-left: 0.25rem;">(${payYear}發放)</span>` : '';
+
+                // 取得發放日期 YYYY/MM/DD (若無發放日則取除息日)
+                let payDateStr = '';
+                if (item.payment_date && item.payment_date !== '--') {
+                    payDateStr = item.payment_date.replace(/-/g, '/');
+                } else if (item.ex_dividend_date && item.ex_dividend_date !== '--') {
+                    payDateStr = item.ex_dividend_date.replace(/-/g, '/');
+                }
+
+                const payDateSubtext = payDateStr 
+                    ? `<div style="font-size: 0.73rem; color: #64748b; font-weight: normal; margin-top: 0.2rem; font-family: ui-monospace, monospace;">(發放${payDateStr})</div>` 
+                    : '';
 
                 const safeCash = parseFloat(item.cash_dividend || 0).toFixed(2);
                 const safeStk = parseFloat(item.stock_dividend || 0).toFixed(2);
@@ -2836,13 +2844,18 @@ ${promptRules}
 
                 return `
                     <tr>
-                        <td><strong>${safeYear}</strong>${payYearBadge}</td>
-                        <td style="color: #15803d; font-weight: 700;">NT$ ${safeCash}</td>
-                        <td style="color: #4338ca;">${safeStk} 股</td>
-                        <td style="color: #0f172a; font-weight: 700;">NT$ ${safeTotal}</td>
-                        <td>${safeEx}</td>
-                        <td><span style="color: #059669;">${safePay}</span></td>
-                        <td style="color: #64748b; font-size: 0.75rem;">${safeAnn}</td>
+                        <td style="vertical-align: middle;">
+                            <div style="line-height: 1.25;">
+                                <strong style="font-size: 0.95rem; color: #0f172a;">${safeYear}</strong>
+                                ${payDateSubtext}
+                            </div>
+                        </td>
+                        <td style="color: #15803d; font-weight: 700; vertical-align: middle;">NT$ ${safeCash}</td>
+                        <td style="color: #4338ca; vertical-align: middle;">${safeStk} 股</td>
+                        <td style="color: #0f172a; font-weight: 700; vertical-align: middle;">NT$ ${safeTotal}</td>
+                        <td style="vertical-align: middle;">${safeEx}</td>
+                        <td style="vertical-align: middle;"><span style="color: #059669; font-weight: 600;">${safePay}</span></td>
+                        <td style="color: #64748b; font-size: 0.75rem; vertical-align: middle;">${safeAnn}</td>
                     </tr>
                 `;
             }).join('');
