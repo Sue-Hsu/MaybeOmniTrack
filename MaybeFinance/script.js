@@ -2823,18 +2823,6 @@ ${promptRules}
                 const formattedYear = formatDividendYear(item.year, item.payment_date, item.ex_dividend_date);
                 const safeYear = escapeHtml(formattedYear);
 
-                // 取得發放日期 YYYY/MM/DD (若無發放日則取除息日)
-                let payDateStr = '';
-                if (item.payment_date && item.payment_date !== '--') {
-                    payDateStr = item.payment_date.replace(/-/g, '/');
-                } else if (item.ex_dividend_date && item.ex_dividend_date !== '--') {
-                    payDateStr = item.ex_dividend_date.replace(/-/g, '/');
-                }
-
-                const payDateSubtext = payDateStr 
-                    ? `<div style="font-size: 0.73rem; color: #64748b; font-weight: normal; margin-top: 0.15rem; font-family: ui-monospace, monospace; white-space: nowrap;">(發放 ${payDateStr})</div>` 
-                    : '';
-
                 const safeCash = parseFloat(item.cash_dividend || 0).toFixed(2);
                 const safeStk = parseFloat(item.stock_dividend || 0).toFixed(2);
                 const safeTotal = parseFloat(item.total_dividend || 0).toFixed(2);
@@ -2851,10 +2839,7 @@ ${promptRules}
                 return `
                     <tr>
                         <td style="vertical-align: middle; white-space: nowrap;">
-                            <div style="line-height: 1.25;">
-                                <strong style="font-size: 0.95rem; color: #0f172a;">${safeYear}</strong>
-                                ${payDateSubtext}
-                            </div>
+                            <strong style="font-size: 0.95rem; color: #0f172a;">${safeYear}</strong>
                         </td>
                         <td style="color: #15803d; font-weight: 700; vertical-align: middle; white-space: nowrap;">NT$ ${safeCash}</td>
                         <td style="color: #4338ca; vertical-align: middle; white-space: nowrap;">${safeStk} 股</td>
