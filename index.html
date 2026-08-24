@@ -219,7 +219,9 @@
                     <div class="gold-header">
                         <h2><i class="fa-solid fa-coins gold-icon"></i> 黃金即時金價與歷史走勢</h2>
                         <div class="api-key-container">
-                            <span class="badge-vault"><i class="fa-solid fa-lock"></i> 雲端保險庫連線</span>
+                            <span class="badge-vault" id="gold-quota-badge" style="cursor: pointer; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.35rem;" title="點擊查詢本月剩餘次數">
+                                <i class="fa-solid fa-gauge-high"></i> <span id="gold-quota-text">查詢 GoldAPI 剩餘額度</span>
+                            </span>
                         </div>
                     </div>
 
@@ -549,8 +551,14 @@
                         <input type="text" id="admin-google-client-id" placeholder="xxxxxxxx.apps.googleusercontent.com">
                     </div>
                     <div class="form-group">
-                        <label for="admin-gold-key">GoldAPI.io Access Token</label>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                            <label for="admin-gold-key" style="margin-bottom: 0;">GoldAPI.io Access Token</label>
+                            <button type="button" class="secondary-btn" id="btn-check-gold-quota" style="padding: 0.2rem 0.6rem; font-size: 0.75rem; border-radius: 6px; cursor: pointer;">
+                                <i class="fa-solid fa-gauge-high"></i> 查詢剩餘次數
+                            </button>
+                        </div>
                         <input type="password" id="admin-gold-key" placeholder="goldapi-xxxxxxxxxxxxxxx">
+                        <div id="gold-quota-admin-result" style="font-size: 0.8rem; margin-top: 0.35rem; color: #2563eb; font-weight: 600; display: none;"></div>
                     </div>
                 </div>
 

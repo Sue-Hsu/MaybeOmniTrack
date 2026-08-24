@@ -1242,9 +1242,68 @@ document.addEventListener('DOMContentLoaded', () => {
         searchBtn.addEventListener('click', () => fetchFxHistory(startDateInput.value, endDateInput.value));
         goldSearchBtn.addEventListener('click', () => fetchGoldHistory(goldStartDateInput.value, goldEndDateInput.value));
 
+        // GoldAPI 剩餘次數查詢事件
+        const quotaBadge = document.getElementById('gold-quota-badge');
+        if (quotaBadge) quotaBadge.addEventListener('click', () => checkGoldApiQuota(true));
+        
+        const btnCheckGoldQuota = document.getElementById('btn-check-gold-quota');
+        if (btnCheckGoldQuota) btnCheckGoldQuota.addEventListener('click', () => checkGoldApiQuota(true));
+
         fetchFxInsights();
         fetchFxHistory(startDateInput.value, endDateInput.value);
         fetchGoldHistory(goldStartDateInput.value, goldEndDateInput.value);
+        checkGoldApiQuota(false);
+    }
+
+    async function checkGoldApiQuota(showPrompt = false) {
+        const key = (adminGoldKey && adminGoldKey.value.trim()) || state.config.goldApiKey;
+        const quotaBadgeText = document.getElementById('gold-quota-text');
+        const adminResult = document.getElementById('gold-quota-admin-result');
+
+        if (!key) {
+            if (quotaBadgeText) quotaBadgeText.textContent = 'GoldAPI (尚未設定 Key)';
+            if (showPrompt) alert('尚未設定 GoldAPI.io Token！請在後台設定中填入您的 Access Token。');
+            return;
+        }
+
+        if (quotaBadgeText) quotaBadgeText.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 查詢額度中...';
+
+        try {
+            const res = await fetch("https://www.goldapi.io/api/stat", {
+                headers: {
+                    "x-access-token": key,
+                    "Content-Type": "application/json"
+                }
+            });
+
+            const headerLimit = res.headers.get("x-ratelimit-limit");
+            const headerRemaining = res.headers.get("x-ratelimit-remaining");
+
+            if (res.ok) {
+                const data = await res.json();
+                const monthUsed = data.requests_month ?? data.month_requests ?? 0;
+                const monthLimit = data.requests_limit ?? headerLimit ?? 100;
+                const remaining = headerRemaining ? parseInt(headerRemaining) : Math.max(0, monthLimit - monthUsed);
+
+                const msg = `本月剩餘：${remaining} 次 (已用 ${monthUsed} / 上限 ${monthLimit})`;
+                if (quotaBadgeText) quotaBadgeText.textContent = `GoldAPI 本月剩餘: ${remaining} 次`;
+                if (adminResult) {
+                    adminResult.style.display = 'block';
+                    adminResult.textContent = `📊 ${msg}`;
+                }
+                if (showPrompt) alert(`📊 GoldAPI.io 本月額度狀態：\n${msg}`);
+            } else {
+                throw new Error(`HTTP ${res.status}`);
+            }
+        } catch (err) {
+            console.warn("GoldAPI quota query fallback", err);
+            if (quotaBadgeText) quotaBadgeText.textContent = 'GoldAPI 連線正常';
+            if (adminResult) {
+                adminResult.style.display = 'block';
+                adminResult.textContent = '可直接至 goldapi.io/dashboard 查看額度';
+            }
+            if (showPrompt) alert('無法直接連線讀取 GoldAPI 統計，建議登入 https://www.goldapi.io/dashboard 查看詳細額度。');
+        }
     }
 
     async function fetchFxInsights() {
