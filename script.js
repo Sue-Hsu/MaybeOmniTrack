@@ -252,6 +252,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (savedFavs) {
                 state.watchlist = new Set(JSON.parse(savedFavs));
             }
+            const savedUser = localStorage.getItem('maybe_omni_current_user');
+            if (savedUser) {
+                const parsedUser = JSON.parse(savedUser);
+                setLoggedInUser(parsedUser);
+            }
         } catch (e) {
             console.warn("Config load fallback", e);
         }
@@ -520,6 +525,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // 登出
         btnLogout.addEventListener('click', () => {
             state.currentUser = null;
+            localStorage.removeItem('maybe_omni_current_user');
             unauthView.style.display = 'block';
             authView.style.display = 'none';
             btnOpenAdmin.style.display = 'none';
@@ -599,6 +605,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function setLoggedInUser(user) {
         state.currentUser = user;
+        localStorage.setItem('maybe_omni_current_user', JSON.stringify(user));
         unauthView.style.display = 'none';
         authView.style.display = 'flex';
         userDisplayName.textContent = user.name;
