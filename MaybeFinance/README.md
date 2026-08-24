@@ -1,7 +1,0 @@
-# MaybeOmniTrack
-
-All-in-one tracking suite.
-
-## Modules
-- [MaybeFinance](./MaybeFinance/)
-
