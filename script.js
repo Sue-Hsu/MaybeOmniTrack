@@ -27,7 +27,8 @@ document.addEventListener('DOMContentLoaded', () => {
             supabaseKey: '',
             goldApiKey: '',
             geminiApiKey: '', // Google Studio AI (Gemini Flash) API Key
-            geminiModel: 'gemini-2.5-flash', // 選定的 Gemini 模型
+            geminiModel: 'gemini-3.6-flash', // 選定的 Gemini 模型
+            geminiPrompt: '', // 自訂存股健檢法則與提示詞
             googleClientId: '432499293288-35d73h2vaf2q5u1kv816d7m15h3utmdr.apps.googleusercontent.com',
             adminGoogleEmails: '', // 指定管理員 Gmail 清單
             firebaseConfig: {
@@ -100,6 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const adminGoldKey = document.getElementById('admin-gold-key');
     const adminGeminiKey = document.getElementById('admin-gemini-key');
     const adminGeminiModel = document.getElementById('admin-gemini-model');
+    const adminGeminiPrompt = document.getElementById('admin-gemini-prompt');
     const btnFetchGeminiModels = document.getElementById('btn-fetch-gemini-models');
     const geminiModelLoadStatus = document.getElementById('gemini-model-load-status');
     const adminGoogleClientId = document.getElementById('admin-google-client-id');
@@ -304,6 +306,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.gold_key) state.config.goldApiKey = data.gold_key;
                 if (data.gemini_key) state.config.geminiApiKey = data.gemini_key;
                 if (data.gemini_model) state.config.geminiModel = data.gemini_model;
+                if (data.gemini_prompt) state.config.geminiPrompt = data.gemini_prompt;
                 if (data.custom_user) state.config.customUser = data.custom_user;
                 if (data.custom_pass) state.config.customPass = data.custom_pass;
                 if (data.admin_emails) state.config.adminGoogleEmails = data.admin_emails;
@@ -327,6 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 gold_key: state.config.goldApiKey,
                 gemini_key: state.config.geminiApiKey,
                 gemini_model: state.config.geminiModel,
+                gemini_prompt: state.config.geminiPrompt || STOCK_RULES_KNOWLEDGE,
                 custom_user: state.config.customUser,
                 custom_pass: state.config.customPass,
                 admin_emails: state.config.adminGoogleEmails,
@@ -509,7 +513,8 @@ document.addEventListener('DOMContentLoaded', () => {
             adminSupabaseKey.value = state.config.supabaseKey;
             adminGoldKey.value = state.config.goldApiKey;
             if (adminGeminiKey) adminGeminiKey.value = state.config.geminiApiKey || '';
-            if (adminGeminiModel) adminGeminiModel.value = state.config.geminiModel || 'gemini-2.5-flash';
+            if (adminGeminiModel) adminGeminiModel.value = state.config.geminiModel || 'gemini-3.6-flash';
+            if (adminGeminiPrompt) adminGeminiPrompt.value = state.config.geminiPrompt || STOCK_RULES_KNOWLEDGE;
             adminGoogleClientId.value = state.config.googleClientId;
             adminGoogleEmails.value = state.config.adminGoogleEmails;
             adminFirebaseConfig.value = typeof state.config.firebaseConfig === 'string' ? state.config.firebaseConfig : JSON.stringify(state.config.firebaseConfig, null, 2);
@@ -561,6 +566,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.config.goldApiKey = adminGoldKey.value.trim();
             if (adminGeminiKey) state.config.geminiApiKey = adminGeminiKey.value.trim();
             if (adminGeminiModel) state.config.geminiModel = adminGeminiModel.value;
+            if (adminGeminiPrompt) state.config.geminiPrompt = adminGeminiPrompt.value.trim();
             state.config.googleClientId = adminGoogleClientId.value.trim();
             state.config.adminGoogleEmails = adminGoogleEmails.value.trim();
             if (adminFirebaseConfig.value.trim()) {
@@ -611,14 +617,22 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (models.length > 0 && adminGeminiModel) {
-                // 將 Flash 模型排在最前
+                // 將 Flash 模型排在最前 (優先排序 3.6 / 3.7 / 2.5 / 1.5)
                 models.sort((a, b) => {
-                    const aFlash = a.name.toLowerCase().includes('flash') ? 0 : 1;
-                    const bFlash = b.name.toLowerCase().includes('flash') ? 0 : 1;
-                    return aFlash - bFlash;
+                    const aName = a.name.toLowerCase();
+                    const bName = b.name.toLowerCase();
+                    const getScore = (n) => {
+                        if (n.includes('3.6') && n.includes('flash')) return 1;
+                        if (n.includes('3.7') && n.includes('flash')) return 2;
+                        if (n.includes('2.5') && n.includes('flash')) return 3;
+                        if (n.includes('1.5') && n.includes('flash')) return 4;
+                        if (n.includes('flash')) return 5;
+                        return 10;
+                    };
+                    return getScore(aName) - getScore(bName);
                 });
 
-                const currentSelection = state.config.geminiModel || 'gemini-2.5-flash';
+                const currentSelection = state.config.geminiModel || 'gemini-3.6-flash';
                 adminGeminiModel.innerHTML = '';
 
                 models.forEach(m => {
@@ -686,7 +700,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // 呼叫 Google Studio AI (依選定模型動態呼叫) 進行存股法則深度分析
     async function generateAiStockDiagnosis(code, name, price) {
         const apiKey = state.config.geminiApiKey;
-        const selectedModel = (state.config.geminiModel || 'gemini-2.5-flash').replace(/^models\//, '');
+        const selectedModel = (state.config.geminiModel || 'gemini-3.6-flash').replace(/^models\//, '');
+        const promptRules = state.config.geminiPrompt || STOCK_RULES_KNOWLEDGE;
         
         // 若使用者有設定 Gemini API Key，呼叫 Google Gemini API
         if (apiKey) {
@@ -694,7 +709,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const promptText = `
 你是一位精通台灣股市與存股理財的專業資深架構分析師。
 請根據以下【存股大師 4 大經典選股法則與 5 大維度標準】：
-${STOCK_RULES_KNOWLEDGE}
+${promptRules}
 
 請為台股標的【${code} ${name}】(當前參考價約 NT$ ${price}) 進行客觀診斷。
 請輸出嚴格符合以下結構的 JSON 字串（勿加上 markdown 標籤以外的多餘雜訊）：
