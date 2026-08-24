@@ -397,10 +397,11 @@
             <div class="modal-body">
                 <!-- Google 登入 -->
                 <div class="login-block">
-                    <h4>方式一：Google 帳號一鍵登入</h4>
-                    <p class="text-sm text-muted">具備管理員身分，可自訂後台設定與修改特定帳密。</p>
-                    <button class="btn-google-login" id="btn-google-sign-in">
-                        <i class="fa-brands fa-google"></i> 使用 Google 帳號登入
+                    <h4>方式一：Google 帳號登入</h4>
+                    <p class="text-sm text-muted">指定之管理者 Gmail 登入後可解鎖後台；其餘 Google 帳號為一般檢視權限。</p>
+                    <div id="google-signin-btn-container" style="display: flex; justify-content: center; margin-top: 0.5rem;"></div>
+                    <button class="btn-google-login" id="btn-google-fallback-login" style="margin-top: 0.4rem;">
+                        <i class="fa-brands fa-google"></i> 本地/測試模式 Google 登入
                     </button>
                 </div>
 
@@ -469,16 +470,20 @@
                     </div>
                 </div>
 
-                <!-- 3. 第三方 API 金鑰 -->
+                <!-- 3. 第三方 API 金鑰與 Google 授權 -->
                 <div class="admin-section-box">
-                    <h4><i class="fa-solid fa-key"></i> 外部 API 金鑰</h4>
+                    <h4><i class="fa-solid fa-key"></i> 授權與 API 金鑰</h4>
                     <div class="form-group">
-                        <label for="admin-gold-key">GoldAPI.io Access Token</label>
-                        <input type="password" id="admin-gold-key" placeholder="goldapi-xxxxxxxxxxxxxxx">
+                        <label for="admin-google-emails">指定管理員 Gmail 清單 (多個請用逗號分隔)</label>
+                        <input type="text" id="admin-google-emails" placeholder="例如：myemail@gmail.com, manager@gmail.com">
                     </div>
                     <div class="form-group">
                         <label for="admin-google-client-id">Google OAuth Client ID</label>
                         <input type="text" id="admin-google-client-id" placeholder="xxxxxxxx.apps.googleusercontent.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="admin-gold-key">GoldAPI.io Access Token</label>
+                        <input type="password" id="admin-gold-key" placeholder="goldapi-xxxxxxxxxxxxxxx">
                     </div>
                 </div>
 

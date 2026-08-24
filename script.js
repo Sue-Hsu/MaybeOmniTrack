@@ -1,11 +1,11 @@
 /**
  * MaybeOmniTrack - 財務白癡救星 全功能核心程式碼
- * 包含：匯率金價、存股健檢、K線歷史走勢、Google/特定帳號雙登入、Supabase 關聯資料庫整合
+ * 包含：匯率金價、存股健檢、K線歷史走勢、Google OAuth / 特定帳號雙登入、指定管理員白名單、Supabase 資料庫整合
  */
 
 document.addEventListener('DOMContentLoaded', () => {
     // =========================================================================
-    // 1. 全域狀態與預載經典標的名單
+    // 1. 全域狀態與預載資料
     // =========================================================================
     const state = {
         currentUser: null, // { name: '', email: '', role: 'admin' | 'user' }
@@ -17,14 +17,15 @@ document.addEventListener('DOMContentLoaded', () => {
         chartRange: 90,
         chartType: 'line',
         
-        // 系統設定 (可由 Google 管理員在後台修改，不寫死金鑰)
+        // 系統設定 (支援 Google 管理員在後台修改，程式碼無金鑰外洩風險)
         config: {
             customUser: 'admin',
             customPass: '123456',
             supabaseUrl: '',
             supabaseKey: '',
             goldApiKey: '',
-            googleClientId: ''
+            googleClientId: '432499293288-35d73h2vaf2q5u1kv816d7m15h3utmdr.apps.googleusercontent.com',
+            adminGoogleEmails: '' // 指定管理員 Gmail 清單，例如 "admin@gmail.com, kilin@gmail.com"
         },
         
         // 匯率暫存
@@ -140,7 +141,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // 彈窗
     const loginModal = document.getElementById('login-modal');
     const btnCloseLoginModal = document.getElementById('btn-close-login-modal');
-    const btnGoogleSignIn = document.getElementById('btn-google-sign-in');
+    const googleBtnContainer = document.getElementById('google-signin-btn-container');
+    const btnGoogleFallback = document.getElementById('btn-google-fallback-login');
     const inputCustomUser = document.getElementById('input-custom-username');
     const inputCustomPass = document.getElementById('input-custom-password');
     const btnCustomLogin = document.getElementById('btn-custom-login');
@@ -153,6 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const adminSupabaseKey = document.getElementById('admin-supabase-key');
     const adminGoldKey = document.getElementById('admin-gold-key');
     const adminGoogleClientId = document.getElementById('admin-google-client-id');
+    const adminGoogleEmails = document.getElementById('admin-google-emails');
     const btnSaveAdminSettings = document.getElementById('btn-save-admin-settings');
 
     // 股票健檢與篩選
@@ -217,11 +220,12 @@ document.addEventListener('DOMContentLoaded', () => {
         setupDates();
         initNavigation();
         initAuthHandlers();
+        initGoogleIdentityServices();
         initStocksSection();
         initFxAndGoldSection();
     }
 
-    // 讀取設定 (以動態記憶體與安全防護為主)
+    // 讀取設定
     function loadSavedConfig() {
         try {
             const saved = localStorage.getItem('maybe_omni_config');
@@ -278,42 +282,141 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // =========================================================================
-    // 5. 雙模式身分認證 (Google 登入 + 特定帳號登入)
+    // 5. Google Identity Services (GIS) 與指定管理員判定
+    // =========================================================================
+    function initGoogleIdentityServices() {
+        if (typeof google === 'undefined' || !google.accounts || !google.accounts.id) {
+            console.log("Google GIS library not loaded or offline, fallback enabled.");
+            return;
+        }
+
+        try {
+            google.accounts.id.initialize({
+                client_id: state.config.googleClientId,
+                callback: handleGoogleCredentialResponse,
+                auto_select: false,
+                cancel_on_tap_outside: true
+            });
+
+            // 渲染官方 Google 登入按鈕
+            if (googleBtnContainer) {
+                googleBtnContainer.innerHTML = '';
+                google.accounts.id.renderButton(googleBtnContainer, {
+                    theme: 'outline',
+                    size: 'large',
+                    type: 'standard',
+                    shape: 'pill',
+                    text: 'signin_with',
+                    logo_alignment: 'left',
+                    width: 280
+                });
+            }
+        } catch (err) {
+            console.warn("Google GIS init error", err);
+        }
+    }
+
+    // JWT Payload 解碼
+    function decodeJwt(token) {
+        try {
+            const base64Url = token.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+            return JSON.parse(jsonPayload);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // Google 登入回傳處理
+    function handleGoogleCredentialResponse(response) {
+        const payload = decodeJwt(response.credential);
+        if (!payload || !payload.email) {
+            alert("Google 登入驗證失敗，無法讀取帳號資訊。");
+            return;
+        }
+
+        const userEmail = payload.email.toLowerCase().trim();
+        const userName = payload.name || payload.email.split('@')[0];
+
+        // 檢查管理員 Gmail 白名單
+        let isAdmin = false;
+        const adminEmailsList = state.config.adminGoogleEmails
+            .toLowerCase()
+            .split(',')
+            .map(e => e.trim())
+            .filter(e => e.length > 0);
+
+        if (adminEmailsList.length === 0) {
+            // 若尚未設定任何管理員名單，則首位登入之 Google 帳號自動晉升並設定為管理者
+            state.config.adminGoogleEmails = userEmail;
+            localStorage.setItem('maybe_omni_config', JSON.stringify(state.config));
+            isAdmin = true;
+            alert(`🎉 恭喜！檢測到首次使用 Google 登入，系統已自動將您 (${userEmail}) 指定為最高管理員！`);
+        } else {
+            isAdmin = adminEmailsList.includes(userEmail);
+        }
+
+        if (isAdmin) {
+            setLoggedInUser({ name: `${userName} (Google)`, email: userEmail, role: 'admin' });
+            loginModal.style.display = 'none';
+            alert(`👑 歡迎管理員 ${userName} (${userEmail}) 登入！後台設定功能已解鎖。`);
+        } else {
+            setLoggedInUser({ name: `${userName} (Google)`, email: userEmail, role: 'user' });
+            loginModal.style.display = 'none';
+            alert(`👋 歡迎 ${userName} (${userEmail})！您目前為「一般用戶」檢視權限。若需後台管理權限，請由管理者將您的 Gmail 加入授權名單。`);
+        }
+    }
+
+    // =========================================================================
+    // 6. 身分認證與管理員後台事件
     // =========================================================================
     function initAuthHandlers() {
-        btnOpenLogin.addEventListener('click', () => loginModal.style.display = 'flex');
+        btnOpenLogin.addEventListener('click', () => {
+            loginModal.style.display = 'flex';
+            initGoogleIdentityServices();
+        });
         btnCloseLoginModal.addEventListener('click', () => loginModal.style.display = 'none');
         
         btnOpenAdmin.addEventListener('click', () => {
+            if (!state.currentUser || state.currentUser.role !== 'admin') {
+                alert("您不具備管理員權限！");
+                return;
+            }
             adminCustomUser.value = state.config.customUser;
             adminCustomPass.value = state.config.customPass;
             adminSupabaseUrl.value = state.config.supabaseUrl;
             adminSupabaseKey.value = state.config.supabaseKey;
             adminGoldKey.value = state.config.goldApiKey;
             adminGoogleClientId.value = state.config.googleClientId;
+            adminGoogleEmails.value = state.config.adminGoogleEmails;
             adminModal.style.display = 'flex';
         });
         btnCloseAdminModal.addEventListener('click', () => adminModal.style.display = 'none');
 
-        // 特定帳號登入
+        // 特定帳號密碼登入
         btnCustomLogin.addEventListener('click', () => {
             const u = inputCustomUser.value.trim();
             const p = inputCustomPass.value.trim();
             if (u === state.config.customUser && p === state.config.customPass) {
-                setLoggedInUser({ name: u, role: 'user' });
+                setLoggedInUser({ name: u, email: '', role: 'user' });
                 loginModal.style.display = 'none';
-                alert(`歡迎回來，${u}！您已成功登入系統。`);
+                alert(`歡迎回來，${u}！您已成功登入系統（一般用戶權限）。`);
             } else {
                 alert('帳號或密碼錯誤！請向管理員確認。');
             }
         });
 
-        // Google 登入按鈕
-        btnGoogleSignIn.addEventListener('click', () => {
-            // Google Sign-In 流程 (管理員權限)
-            setLoggedInUser({ name: 'Google 管理者', role: 'admin' });
-            loginModal.style.display = 'none';
-            alert('🎉 Google 管理員身分登入成功！已為您解鎖頂部的「⚙️ 後台設定」功能。');
+        // 測試模式 Google 登入 (當未聯網或本機 file:// 協議無法使用 GIS 時)
+        btnGoogleFallback.addEventListener('click', () => {
+            const mockEmail = prompt("請輸入您的 Google Gmail 進行測試驗證：", "admin@gmail.com");
+            if (mockEmail) {
+                handleGoogleCredentialResponse({
+                    credential: createMockJwt(mockEmail.trim())
+                });
+            }
         });
 
         // 登出
@@ -333,11 +436,23 @@ document.addEventListener('DOMContentLoaded', () => {
             state.config.supabaseKey = adminSupabaseKey.value.trim();
             state.config.goldApiKey = adminGoldKey.value.trim();
             state.config.googleClientId = adminGoogleClientId.value.trim();
+            state.config.adminGoogleEmails = adminGoogleEmails.value.trim();
 
             localStorage.setItem('maybe_omni_config', JSON.stringify(state.config));
             adminModal.style.display = 'none';
-            alert('✅ 雲端與系統設定儲存成功！已即時生效。');
+            initGoogleIdentityServices();
+            alert('✅ 雲端與系統設定儲存成功！管理員白名單與金鑰已即時生效。');
         });
+    }
+
+    function createMockJwt(email) {
+        const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+        const payload = btoa(JSON.stringify({
+            email: email,
+            name: email.split('@')[0],
+            picture: ""
+        }));
+        return `${header}.${payload}.signature`;
     }
 
     function setLoggedInUser(user) {
@@ -360,7 +475,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // =========================================================================
-    // 6. 股票存股 5 大維度健檢篩選器
+    // 7. 股票存股 5 大維度健檢篩選器
     // =========================================================================
     function initStocksSection() {
         // 折疊速查卡切換
@@ -474,11 +589,9 @@ document.addEventListener('DOMContentLoaded', () => {
         stocksContainer.innerHTML = '';
 
         const filtered = STOCKS_DATA.filter(stock => {
-            // 搜尋關鍵字
             const matchSearch = stock.id.includes(state.searchTerm) || stock.name.toLowerCase().includes(state.searchTerm);
             if (!matchSearch) return false;
 
-            // 類別篩選
             if (state.currentFilter === 'watchlist') return state.watchlist.has(stock.id);
             if (state.currentFilter === 'dividend') return stock.category === 'dividend';
             if (state.currentFilter === 'cashflow') return stock.category === 'cashflow';
@@ -490,7 +603,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return true;
         });
 
-        // 更新計數
         countAllEl.textContent = STOCKS_DATA.length;
         countFavEl.textContent = state.watchlist.size;
 
@@ -509,7 +621,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const isFav = state.watchlist.has(stock.id);
             const scorePercent = Math.round((health.score / health.total) * 100);
 
-            // 分類 Badge HTML
             let catBadge = '';
             if (stock.category === 'dividend') catBadge = `<span class="category-badge category-dividend"><i class="fa-solid fa-crown"></i> 🏆 適合穩健存股</span>`;
             else if (stock.category === 'cashflow') catBadge = `<span class="category-badge category-cashflow"><i class="fa-solid fa-money-bill-wave"></i> 💰 適合領高利息</span>`;
@@ -530,7 +641,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 ${catBadge}
 
-                <!-- 健檢總分進度條 -->
                 <div class="health-score-wrap">
                     <div class="health-score-header">
                         <span>存股指標健檢評分</span>
@@ -541,12 +651,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </div>
 
-                <!-- 大白話診斷評語 -->
                 <div class="diagnosis-box">
                     <i class="fa-solid fa-comment-dots" style="color: var(--accent-blue);"></i> <strong>大白話診斷：</strong>${stock.diagnosis}
                 </div>
 
-                <!-- 指標比對 Pills -->
                 <div class="metrics-pill-grid">
                     ${health.metrics.map(m => `
                         <div class="metric-pill" title="${m.desc}">
@@ -565,7 +673,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
 
-            // 自選按鈕事件
+            // 自選事件
             const starBtn = card.querySelector('.btn-star-fav');
             starBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -578,7 +686,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderStocks();
             });
 
-            // 展開歷史圖表
+            // 圖表事件
             const chartBtn = card.querySelector('.btn-view-chart');
             chartBtn.addEventListener('click', () => {
                 state.selectedStockForChart = stock;
@@ -593,12 +701,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // =========================================================================
-    // 7. 股票歷史行情圖表 (Chart.js + FinMind API / Mock 雙軌)
+    // 8. 股票歷史行情圖表
     // =========================================================================
     async function renderStockChart(stock) {
         let chartData = [];
         try {
-            // 嘗試呼叫 FinMind 台股歷史日成交 API
             const today = new Date();
             const pastDate = new Date();
             pastDate.setDate(today.getDate() - state.chartRange);
@@ -618,7 +725,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error("No data");
             }
         } catch (e) {
-            // 自動切換生成精準模擬歷史日 K
             chartData = generateStockMockHistory(stock.price, state.chartRange);
         }
 
@@ -628,7 +734,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (stockChartInstance) stockChartInstance.destroy();
 
         if (state.chartType === 'line') {
-            // 平滑折線圖
             stockChartInstance = new Chart(stockModalChartCtx, {
                 type: 'line',
                 data: {
@@ -656,7 +761,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         } else {
-            // K 線風格柱狀走勢圖
             stockChartInstance = new Chart(stockModalChartCtx, {
                 type: 'bar',
                 data: {
@@ -701,10 +805,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // =========================================================================
-    // 8. 匯率與金價原有邏輯整合
+    // 9. 匯率與金價原有邏輯整合
     // =========================================================================
     function initFxAndGoldSection() {
-        // 計算機
         const calc = () => {
             const amt = parseFloat(amountInput.value) || 0;
             const from = fromCurrency.value;
@@ -724,17 +827,9 @@ document.addEventListener('DOMContentLoaded', () => {
             calc();
         });
 
-        // 匯率查詢
-        searchBtn.addEventListener('click', () => {
-            fetchFxHistory(startDateInput.value, endDateInput.value);
-        });
+        searchBtn.addEventListener('click', () => fetchFxHistory(startDateInput.value, endDateInput.value));
+        goldSearchBtn.addEventListener('click', () => fetchGoldHistory(goldStartDateInput.value, goldEndDateInput.value));
 
-        // 金價查詢
-        goldSearchBtn.addEventListener('click', () => {
-            fetchGoldHistory(goldStartDateInput.value, goldEndDateInput.value);
-        });
-
-        // 載入初始匯率與金價
         fetchFxInsights();
         fetchFxHistory(startDateInput.value, endDateInput.value);
         fetchGoldHistory(goldStartDateInput.value, goldEndDateInput.value);
