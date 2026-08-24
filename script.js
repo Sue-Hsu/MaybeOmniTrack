@@ -154,7 +154,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const loginModal = document.getElementById('login-modal');
     const btnCloseLoginModal = document.getElementById('btn-close-login-modal');
     const googleBtnContainer = document.getElementById('google-signin-btn-container');
-    const btnGoogleFallback = document.getElementById('btn-google-fallback-login');
     const inputCustomUser = document.getElementById('input-custom-username');
     const inputCustomPass = document.getElementById('input-custom-password');
     const btnCustomLogin = document.getElementById('btn-custom-login');
@@ -509,16 +508,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert(`歡迎回來，${u}！您已成功登入系統（一般用戶權限）。`);
             } else {
                 alert('帳號或密碼錯誤！請向管理員確認。');
-            }
-        });
-
-        // 測試模式 Google 登入
-        btnGoogleFallback.addEventListener('click', () => {
-            const mockEmail = prompt("請輸入您的 Google Gmail 進行測試驗證：", "admin@gmail.com");
-            if (mockEmail) {
-                handleGoogleCredentialResponse({
-                    credential: createMockJwt(mockEmail.trim())
-                });
             }
         });
 
