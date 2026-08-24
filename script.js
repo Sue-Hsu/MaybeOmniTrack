@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
             supabaseKey: '',
             goldApiKey: '',
             geminiApiKey: '', // Google Studio AI (Gemini Flash) API Key
+            geminiModel: 'gemini-2.5-flash', // 選定的 Gemini 模型
             googleClientId: '432499293288-35d73h2vaf2q5u1kv816d7m15h3utmdr.apps.googleusercontent.com',
             adminGoogleEmails: '', // 指定管理員 Gmail 清單
             firebaseConfig: {
@@ -98,6 +99,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const adminSupabaseKey = document.getElementById('admin-supabase-key');
     const adminGoldKey = document.getElementById('admin-gold-key');
     const adminGeminiKey = document.getElementById('admin-gemini-key');
+    const adminGeminiModel = document.getElementById('admin-gemini-model');
+    const btnFetchGeminiModels = document.getElementById('btn-fetch-gemini-models');
+    const geminiModelLoadStatus = document.getElementById('gemini-model-load-status');
     const adminGoogleClientId = document.getElementById('admin-google-client-id');
     const adminGoogleEmails = document.getElementById('admin-google-emails');
     const adminFirebaseConfig = document.getElementById('admin-firebase-config');
@@ -299,6 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.supabase_key) state.config.supabaseKey = data.supabase_key;
                 if (data.gold_key) state.config.goldApiKey = data.gold_key;
                 if (data.gemini_key) state.config.geminiApiKey = data.gemini_key;
+                if (data.gemini_model) state.config.geminiModel = data.gemini_model;
                 if (data.custom_user) state.config.customUser = data.custom_user;
                 if (data.custom_pass) state.config.customPass = data.custom_pass;
                 if (data.admin_emails) state.config.adminGoogleEmails = data.admin_emails;
@@ -321,6 +326,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 supabase_key: state.config.supabaseKey,
                 gold_key: state.config.goldApiKey,
                 gemini_key: state.config.geminiApiKey,
+                gemini_model: state.config.geminiModel,
                 custom_user: state.config.customUser,
                 custom_pass: state.config.customPass,
                 admin_emails: state.config.adminGoogleEmails,
@@ -503,12 +509,21 @@ document.addEventListener('DOMContentLoaded', () => {
             adminSupabaseKey.value = state.config.supabaseKey;
             adminGoldKey.value = state.config.goldApiKey;
             if (adminGeminiKey) adminGeminiKey.value = state.config.geminiApiKey || '';
+            if (adminGeminiModel) adminGeminiModel.value = state.config.geminiModel || 'gemini-2.5-flash';
             adminGoogleClientId.value = state.config.googleClientId;
             adminGoogleEmails.value = state.config.adminGoogleEmails;
             adminFirebaseConfig.value = typeof state.config.firebaseConfig === 'string' ? state.config.firebaseConfig : JSON.stringify(state.config.firebaseConfig, null, 2);
             adminModal.style.display = 'flex';
+            if (state.config.geminiApiKey) {
+                fetchAvailableGeminiModels(false);
+            }
         });
         btnCloseAdminModal.addEventListener('click', () => adminModal.style.display = 'none');
+
+        // 讀取 Gemini 模型清單事件
+        if (btnFetchGeminiModels) {
+            btnFetchGeminiModels.addEventListener('click', () => fetchAvailableGeminiModels(true));
+        }
 
         // 特定帳號密碼登入
         btnCustomLogin.addEventListener('click', async () => {
@@ -545,6 +560,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.config.supabaseKey = adminSupabaseKey.value.trim();
             state.config.goldApiKey = adminGoldKey.value.trim();
             if (adminGeminiKey) state.config.geminiApiKey = adminGeminiKey.value.trim();
+            if (adminGeminiModel) state.config.geminiModel = adminGeminiModel.value;
             state.config.googleClientId = adminGoogleClientId.value.trim();
             state.config.adminGoogleEmails = adminGoogleEmails.value.trim();
             if (adminFirebaseConfig.value.trim()) {
@@ -565,8 +581,68 @@ document.addEventListener('DOMContentLoaded', () => {
             adminModal.style.display = 'none';
             initGoogleIdentityServices();
             renderStocks();
-            alert('✅ 雲端設定已成功同步至 Firebase！Gemini AI 與 Supabase 已就緒。');
+            alert(`✅ 雲端設定已成功同步至 Firebase！已啟用 Gemini 模型：${state.config.geminiModel}`);
         });
+    }
+
+    // 連線 Google AI Studio 抓取支援 generateContent 的可用模型清單
+    async function fetchAvailableGeminiModels(showPrompt = false) {
+        const apiKey = (adminGeminiKey && adminGeminiKey.value.trim()) || state.config.geminiApiKey;
+        if (!apiKey) {
+            if (showPrompt) alert("請先填入 Google AI Studio (Gemini) API Key 才能讀取模型清單！");
+            return;
+        }
+
+        if (geminiModelLoadStatus) {
+            geminiModelLoadStatus.style.display = 'block';
+            geminiModelLoadStatus.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在向 Google AI Studio 讀取模型清單...';
+        }
+
+        try {
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+
+            // 過濾支援 generateContent 的模型（排除純向量 embedding 等模型）
+            const models = (data.models || []).filter(m => {
+                const isGen = m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent');
+                const name = m.name || '';
+                return isGen && !name.includes('embedding') && !name.includes('aqa') && !name.includes('imagen');
+            });
+
+            if (models.length > 0 && adminGeminiModel) {
+                // 將 Flash 模型排在最前
+                models.sort((a, b) => {
+                    const aFlash = a.name.toLowerCase().includes('flash') ? 0 : 1;
+                    const bFlash = b.name.toLowerCase().includes('flash') ? 0 : 1;
+                    return aFlash - bFlash;
+                });
+
+                const currentSelection = state.config.geminiModel || 'gemini-2.5-flash';
+                adminGeminiModel.innerHTML = '';
+
+                models.forEach(m => {
+                    const cleanName = m.name.replace(/^models\//, '');
+                    const isFlash = cleanName.toLowerCase().includes('flash');
+                    const opt = document.createElement('option');
+                    opt.value = cleanName;
+                    opt.textContent = `${isFlash ? '⚡ [免費高速] ' : '🧠 [深度推理] '} ${m.displayName || cleanName} (${cleanName})`;
+                    if (cleanName === currentSelection) opt.selected = true;
+                    adminGeminiModel.appendChild(opt);
+                });
+
+                if (geminiModelLoadStatus) {
+                    geminiModelLoadStatus.innerHTML = `✅ 成功讀取 ${models.length} 個可用 Gemini 模型！`;
+                }
+                if (showPrompt) alert(`🎉 成功從 Google AI Studio 讀取到 ${models.length} 個可用模型！請在下拉選單中挑選。`);
+            }
+        } catch (err) {
+            console.warn("Gemini list models failed:", err);
+            if (geminiModelLoadStatus) {
+                geminiModelLoadStatus.innerHTML = `⚠️ 無法連線讀取清單，將使用預設模型選單。`;
+            }
+            if (showPrompt) alert("讀取模型清單失敗，請確認 API Key 是否正確。");
+        }
     }
 
     function setLoggedInUser(user) {
@@ -607,9 +683,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return [];
     }
 
-    // 呼叫 Google Studio AI (Gemini Flash 3.6 / 3.7 / 2.5 / 1.5) 進行存股法則深度分析
+    // 呼叫 Google Studio AI (依選定模型動態呼叫) 進行存股法則深度分析
     async function generateAiStockDiagnosis(code, name, price) {
         const apiKey = state.config.geminiApiKey;
+        const selectedModel = (state.config.geminiModel || 'gemini-2.5-flash').replace(/^models\//, '');
         
         // 若使用者有設定 Gemini API Key，呼叫 Google Gemini API
         if (apiKey) {
@@ -634,8 +711,7 @@ ${STOCK_RULES_KNOWLEDGE}
   "diagnosis": "60~100字大白話診斷評語：說明護城河、抗跌性、配息大方程度、是否符合安全邊際與適合族群。"
 }
 `;
-                // 優先使用 gemini-2.5-flash / gemini-1.5-flash
-                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`;
                 const res = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -650,11 +726,11 @@ ${STOCK_RULES_KNOWLEDGE}
                     if (rawText.startsWith('```json')) rawText = rawText.replace(/^```json/, '').replace(/```$/, '').trim();
                     else if (rawText.startsWith('```')) rawText = rawText.replace(/^```/, '').replace(/```$/, '').trim();
                     const parsed = JSON.parse(rawText);
-                    console.log("🤖 [Gemini AI 診斷成功]", parsed);
+                    console.log(`🤖 [Gemini AI 模型 (${selectedModel}) 診斷成功]`, parsed);
                     return parsed;
                 }
             } catch (aiErr) {
-                console.warn("Gemini API call failed, falling back to rule engine", aiErr);
+                console.warn(`Gemini API (${selectedModel}) call failed, falling back to rule engine`, aiErr);
             }
         }
 
