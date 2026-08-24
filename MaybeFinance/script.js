@@ -2224,12 +2224,57 @@ ${promptRules}
                         console.warn(`Fetch PER/PBR for ${stock.id} error:`, perErr);
                     }
 
+                    // 同步向 FinMind 抓取最新真實財報（計算 5年平均EPS 與 實收股本資本額）
+                    try {
+                        const finRes = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockFinancialStatements&data_id=${stock.id}&start_date=2021-01-01`);
+                        const finJson = await finRes.json();
+                        if (finJson.msg === 'success' && finJson.data && finJson.data.length > 0) {
+                            const epsRows = finJson.data.filter(x => x.type === 'EPS').sort((a, b) => b.date.localeCompare(a.date));
+                            const recent20 = epsRows.slice(0, 20);
+                            if (recent20.length > 0) {
+                                stock.eps5y = parseFloat((recent20.reduce((s, x) => s + (parseFloat(x.value) || 0), 0) / (recent20.length / 4)).toFixed(2));
+                            }
+                            const latestDate = finJson.data[finJson.data.length - 1].date;
+                            const latestEps = (finJson.data.find(x => x.date === latestDate && x.type === 'EPS') || {}).value;
+                            const latestProfit = (finJson.data.find(x => x.date === latestDate && x.type === 'IncomeAfterTaxes') || {}).value;
+                            if (latestEps && latestProfit && latestEps !== 0) {
+                                stock.marketCap = parseFloat(((latestProfit / latestEps * 10) / 100000000).toFixed(1));
+                            }
+                        }
+                    } catch (finErr) {
+                        console.warn(`Fetch Financial Statements for ${stock.id} error:`, finErr);
+                    }
+
+                    // 計算真實連續配息年數 (div_years)
+                    if (divRows && divRows.length > 0) {
+                        const yearsSet = new Set();
+                        divRows.forEach(d => {
+                            const c = parseFloat(d.cash_dividend || 0);
+                            const s = parseFloat(d.stock_dividend || 0);
+                            if (c > 0 || s > 0) {
+                                const yrStr = (d.year || '').slice(0, 4) || (d.ex_dividend_date || '').slice(0, 4);
+                                const num = parseInt(yrStr, 10);
+                                if (num && num > 1900) yearsSet.add(num);
+                            }
+                        });
+                        const sortedYrs = Array.from(yearsSet).sort((a, b) => b - a);
+                        let consecutive = sortedYrs.length > 0 ? 1 : 0;
+                        for (let i = 0; i < sortedYrs.length - 1; i++) {
+                            if (sortedYrs[i] - sortedYrs[i + 1] === 1) consecutive++;
+                            else break;
+                        }
+                        if (consecutive > 0) stock.divYears = consecutive;
+                    }
+
                     if (client) {
                         await client.from('stocks').update({
                             price: stock.price,
                             dividend_yield: stock.yield,
                             pe_ratio: stock.pe,
                             pb_ratio: stock.pb,
+                            eps_5y_avg: stock.eps5y,
+                            market_cap: stock.marketCap,
+                            div_years: stock.divYears,
                             updated_at: new Date()
                         }).eq('stock_id', stock.id);
                     }
