@@ -282,7 +282,36 @@ stateDiagram-v2
 
 ---
 
-## 7. 專案檔案結構導覽 (Project File Tree)
+## 7. 內建三大資安審計與安全檢測技能庫 (Security Skills & Audit Framework)
+
+專案已內建並整合 Trail of Bits 專業資安審計技能庫 (`.agents/skills/`)，可在後續維護、重構或新功能上線前隨時調用進行全自動化安全檢測：
+
+| 資安技能名稱 (Skill Name) | 核心職責與檢測範圍 | 調用時機與目標產出 |
+| :--- | :--- | :--- |
+| **`security-audit`** | **全盤程式碼資安審計與漏洞獵捕**<br>針對 Web App 前端、API 路由、認證鑑權與資料儲存進行滲透測試與漏洞獵捕，專注於具實質破壞力之可利用性風險 (Exploitable Vulnerabilities)。 | 於版本發布或重大重構前執行，產出 `architecture.md`、`REPORT.md` 與結構化 `findings.json` 漏洞清單。 |
+| **`audit-context-building`** | **審計前置架構與邊界上下文建模**<br>在漏洞獵捕前，逐一剖析所有關鍵函數的前提假設 (Assumptions)、保證條款 (Guarantees) 與外部依賴，精確繪製攻擊面邊界。 | 面對陌生模組或複雜業務邏輯時調用，產出 `audit-context/DOSSIER.md` 與未受保護假設 (Unchecked Assumptions) 報告。 |
+| **`insecure-defaults`** | **不安全預設值與寬鬆存取策略稽核**<br>專門檢測不安全的預設配置、寬鬆的 Supabase RLS 策略、未經驗證的降級 Fallback、過度授權的 API Key 與明文憑證外洩風險。 | 於調整資料庫 Schema、RLS Policies 或第三方 API 串接時調用，杜絕後門與配置漂移。 |
+
+### 7.1. 資安技能調用工作流 (Security Audit Workflow)
+```
+[發起資安審查]
+       │
+       ▼
+1. audit-context-building ➔ 建立函數依賴與邊界假設矩陣 (DOSSIER.md)
+       │
+       ▼
+2. insecure-defaults ➔ 掃描 Supabase RLS、Firebase 權限與 API 金鑰傳輸弱點
+       │
+       ▼
+3. security-audit ➔ 發動多維度漏洞獵捕 (Phase 1~Phase 5)
+       │
+       ▼
+4. 產出資安修復報告 (REPORT.md) 與自動修復建議
+```
+
+---
+
+## 8. 專案檔案結構導覽 (Project File Tree)
 
 ```text
 MaybeFinance/
@@ -297,19 +326,23 @@ MaybeFinance/
 │   ├── stupid-512.png
 │   ├── stupid-black-32.png
 │   └── stupid-black-512.png
-└── docs/                           # 官方文檔與設定指南
-    ├── plans/
-    │   └── specs.md                # 【本文件】系統架構與技術需求規格書
-    ├── firebase_setup_guide.md     # Firebase 設定指引
-    ├── google_oauth_setup_guide.md # Google OAuth 登入設定指引
-    ├── github_pages_setup_guide.md # GitHub Pages 發布指南
-    ├── stock_selection_rules.md    # 存股 5 大維度經典理論指南
-    └── supabase_schema.sql         # Supabase PostgreSQL 初始化腳本
+├── docs/                           # 官方文檔與設定指南
+│   ├── plans/
+│   │   └── specs.md                # 【本文件】系統架構與技術需求規格書
+│   ├── firebase_setup_guide.md     # Firebase 設定指引
+│   ├── google_oauth_setup_guide.md # Google OAuth 登入設定指引
+│   ├── github_pages_setup_guide.md # GitHub Pages 發布指南
+│   ├── stock_selection_rules.md    # 存股 5 大維度經典理論指南
+│   └── supabase_schema.sql         # Supabase PostgreSQL 初始化腳本
+└── .agents/skills/                 # 內建資安審計技能庫
+    ├── security-audit/             # 全盤資安審計技能
+    ├── audit-context-building/     # 審計前置架構建模技能
+    └── insecure-defaults/          # 不安全預設值檢測技能
 ```
 
 ---
 
-## 8. 驗收標準與完成定義 (Definition of Done, DoD)
+## 9. 驗收標準與完成定義 (Definition of Done, DoD)
 
 1. **功能完整性**：
    * 三大主分頁（存股健檢、黃金牌告、外幣匯率）切換流暢無卡頓。
@@ -320,3 +353,4 @@ MaybeFinance/
    * 通過 `node --check script.js` 語法檢驗無報錯。
 3. **安全規範**：
    * 無任何明文私鑰寫死於公開程式碼中；所有系統金鑰統一透過 Firebase 保險庫或管理員後台動態注入。
+   * 具備完整資安技能支援，可隨時發動 `security-audit` 與 `insecure-defaults` 進行合規審查。
