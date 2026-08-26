@@ -67,6 +67,16 @@ document.addEventListener('DOMContentLoaded', () => {
     let STOCKS_DATA = [];
     let cachedFinMindStockList = null; // 快取所有台股清單
 
+    // 證交所 ETF 基本資料端點沒有提供瀏覽器 CORS；這些是 2026-08-25
+    // 從證交所 t187ap47_L 取得的官方單位數快照，只在即時端點無法讀取時備援。
+    const ETF_FUND_METADATA_FALLBACK = Object.freeze({
+        '0050': { unitCount: 22330000000, indexName: '臺灣50指數', fundType: '國內成分證券指數股票型基金', sourceDate: '2026-08-25' },
+        '0056': { unitCount: 14180034000, indexName: '臺灣高股息指數', fundType: '國內成分證券指數股票型基金', sourceDate: '2026-08-25' },
+        '006208': { unitCount: 1860040000, indexName: '臺灣50指數', fundType: '國內成分證券指數股票型基金', sourceDate: '2026-08-25' },
+        '00878': { unitCount: 18859790000, indexName: 'MSCI臺灣ESG永續高股息精選30指數', fundType: '國內成分證券指數股票型基金', sourceDate: '2026-08-25' },
+        '00929': { unitCount: 5037139000, indexName: '臺灣指數公司特選臺灣上市上櫃科技優息指數', fundType: '國內成分證券指數股票型基金', sourceDate: '2026-08-25' }
+    });
+
     // 存股 5 大維度核心指標知識庫
     const STOCK_RULES_KNOWLEDGE = `
 【存股核心 5 大維度評估法則】
@@ -2196,25 +2206,100 @@ ${promptRules}
         return freshRows;
     }
 
+    function normalizeFinMindPriceRow(stockId, item) {
+        const close = Metrics.numberOrNull(item.close);
+        const tradeDate = item.date || item.trade_date;
+        if (!tradeDate || !(close > 0)) return null;
+        return {
+            stock_id: stockId,
+            trade_date: tradeDate,
+            open_price: Metrics.numberOrNull(item.open),
+            high_price: Metrics.numberOrNull(item.max),
+            low_price: Metrics.numberOrNull(item.min),
+            close_price: close,
+            volume: Metrics.numberOrNull(item.Trading_Volume)
+        };
+    }
+
+    function mergePriceRows(byStock, stockId, rows) {
+        const merged = new Map((byStock.get(stockId) || []).map(row => [row.trade_date, row]));
+        for (const row of rows) merged.set(row.trade_date, row);
+        byStock.set(stockId, [...merged.values()].sort((a, b) => String(a.trade_date).localeCompare(String(b.trade_date))));
+    }
+
     async function loadPriceHistoryByStock(client, stockIds) {
         const byStock = new Map();
-        if (!client) return byStock;
-        try {
-            const ids = [...new Set([...stockIds, '0050'])];
-            const { data, error } = await client
-                .from('stock_prices')
-                .select('stock_id,trade_date,close_price')
-                .in('stock_id', ids)
-                .order('trade_date', { ascending: true })
-                .limit(10000);
-            if (error) throw error;
-            for (const row of data || []) {
-                if (!byStock.has(row.stock_id)) byStock.set(row.stock_id, []);
-                byStock.get(row.stock_id).push(row);
+        const ids = [...new Set([...stockIds, '0050'])];
+
+        if (client) {
+            try {
+                const { data, error } = await client
+                    .from('stock_prices')
+                    .select('stock_id,trade_date,close_price')
+                    .in('stock_id', ids)
+                    .order('trade_date', { ascending: true })
+                    .limit(10000);
+                if (error) throw error;
+                const groupedRows = new Map();
+                for (const row of data || []) {
+                    if (!groupedRows.has(row.stock_id)) groupedRows.set(row.stock_id, []);
+                    groupedRows.get(row.stock_id).push(row);
+                }
+                for (const [stockId, rows] of groupedRows) mergePriceRows(byStock, stockId, rows);
+            } catch (error) {
+                console.warn('Beta 歷史行情讀取失敗', error);
             }
-        } catch (error) {
-            console.warn('Beta 歷史行情讀取失敗', error);
         }
+
+        // Supabase 沒有至少 20 個共同觀察值，或資料已明顯落後時，從
+        // FinMind 補最近約 400 天，讓 ETF 與新加入的股票也能計算 Beta。
+        const staleBefore = new Date();
+        staleBefore.setDate(staleBefore.getDate() - 10);
+        const missingIds = ids.filter(stockId => {
+            const rows = byStock.get(stockId) || [];
+            const latestDate = rows.reduce((latest, row) => row.trade_date > latest ? row.trade_date : latest, '');
+            return rows.length < 21 || !latestDate || latestDate < staleBefore.toISOString().slice(0, 10);
+        });
+
+        if (missingIds.length === 0) return byStock;
+
+        const endDate = new Date().toISOString().slice(0, 10);
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - 400);
+        const startDateStr = startDate.toISOString().slice(0, 10);
+        const fetchedRows = [];
+
+        await Promise.all(missingIds.map(async stockId => {
+            try {
+                const response = await fetch(buildFinMindUrl('TaiwanStockPrice', {
+                    data_id: stockId,
+                    start_date: startDateStr,
+                    end_date: endDate
+                }));
+                const json = await response.json();
+                if (json.msg !== 'success' || !Array.isArray(json.data)) return;
+                const rows = json.data.map(item => normalizeFinMindPriceRow(stockId, item)).filter(Boolean);
+                if (rows.length > 0) {
+                    mergePriceRows(byStock, stockId, rows);
+                    fetchedRows.push(...rows);
+                }
+            } catch (error) {
+                console.warn(`FinMind Beta 歷史行情讀取失敗 (${stockId})`, error);
+            }
+        }));
+
+        if (client && fetchedRows.length > 0) {
+            for (let index = 0; index < fetchedRows.length; index += 200) {
+                const { error } = await client
+                    .from('stock_prices')
+                    .upsert(fetchedRows.slice(index, index + 200), { onConflict: 'stock_id,trade_date' });
+                if (error) {
+                    console.warn('Beta 歷史行情寫入 Supabase 失敗', error);
+                    break;
+                }
+            }
+        }
+
         return byStock;
     }
 
@@ -2305,7 +2390,10 @@ ${promptRules}
                 }
 
                 // B. ETF 使用官方基金基本資料；個股估值才使用 BWIBBU。
-                const fundMetadata = twseFundMap[stock.id] || null;
+                const liveFundMetadata = twseFundMap[stock.id] || null;
+                const fundMetadata = liveFundMetadata?.unitCount > 0
+                    ? liveFundMetadata
+                    : (ETF_FUND_METADATA_FALLBACK[stock.id] || null);
                 stock.isEtf = Boolean(fundMetadata) || Metrics.isEtfCode(stock.id);
                 if (stock.isEtf) {
                     stock.marketCap = Metrics.estimateEtfFundSize(fundMetadata?.unitCount, stock.price);
