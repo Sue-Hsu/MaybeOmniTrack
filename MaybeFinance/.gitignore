@@ -3,6 +3,8 @@
 GEMINI.md
 .agents/
 reports/
+docs/
+tests/
 
 # OS generated files
 .DS_Store
