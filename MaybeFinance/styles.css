@@ -856,6 +856,7 @@ input:focus, select:focus {
 .metric-pass { color: var(--color-good); }
 .metric-fail { color: var(--color-bad); }
 .metric-warn { color: var(--color-warn); }
+.metric-na { color: var(--text-sub); }
 
 .stock-card-actions {
     margin-top: auto;

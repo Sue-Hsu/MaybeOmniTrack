@@ -6,6 +6,9 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
+    const Metrics = window.StockMetrics;
+    if (!Metrics) throw new Error('stock-metrics.js must be loaded before script.js');
+
     // =========================================================================
     // 1. 全域狀態與安全轉義函式
     // =========================================================================
@@ -35,7 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // 系統設定 (Firebase 保險庫與 Google 後台管理)
         config: {
             customUser: 'admin',
-            customPass: '123456',
+            customPass: '', // 不提供公開預設密碼；需要時由管理員在後台設定
             supabaseUrl: '',
             supabaseKey: '',
             goldApiKey: '',
@@ -72,6 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
 3. 配息政策：連續配發股利 10 年以上、盈餘分配率 >= 70%、避開配息暴起暴跌之景氣循環股。
 4. 波動與防禦性：Beta 波動度 < 0.8（最好 < 0.6 價格抗跌）、能安心長期持有。
 5. 估價與買進時機：預估現金殖利率 >= 5% 具備安全邊際、股價淨值比 (PB) < 2.5、合理本益比 (PE)。
+ETF 特別規則：基金規模取代公司股本；連續配息門檻為 5 年；公司 EPS 與公司盈餘分配率不納入 ETF 評分；ETF 的 PE/PB 只有在具有可追溯的投資組合官方數據時才使用。
 分類定義：
 - 'dividend' (適合穩健存股)：官股金控、電信龍頭、高防禦牛皮股 (Beta<0.6, 殖利率>5%, 連續配息>15年)。
 - 'cashflow' (適合領高利息)：高股息ETF、民營金控、季配息穩定現金流 (殖利率>5.5%, 盈餘分配率>75%)。
@@ -451,21 +455,25 @@ document.addEventListener('DOMContentLoaded', () => {
             // 2. 查詢 Supabase stocks 資料表
             const { data: dbStocks, error: errStocks } = await client.from('stocks').select('*').order('stock_id', { ascending: true });
             if (dbStocks && !errStocks) {
-                STOCKS_DATA = dbStocks.map(row => ({
-                    id: row.stock_id,
-                    name: row.name,
-                    price: parseFloat(row.price || 0),
-                    marketCap: parseFloat(row.market_cap || 0),
-                    eps5y: parseFloat(row.eps_5y_avg || 0),
-                    divYears: parseInt(row.div_years || 0),
-                    payoutRatio: parseFloat(row.payout_ratio || 0),
-                    yield: parseFloat(row.dividend_yield || 0),
-                    beta: parseFloat(row.beta || 0.8),
-                    pb: parseFloat(row.pb_ratio || 1.5),
-                    pe: parseFloat(row.pe_ratio || 15),
-                    category: row.category_tag || 'dividend',
-                    diagnosis: row.diagnosis_note || ''
-                }));
+                STOCKS_DATA = dbStocks.map(row => {
+                    const isEtf = Metrics.isEtfCode(row.stock_id);
+                    return {
+                        id: row.stock_id,
+                        name: row.name,
+                        isEtf,
+                        price: Metrics.numberOrNull(row.price) || 0,
+                        marketCap: Metrics.numberOrNull(row.market_cap),
+                        eps5y: isEtf ? null : Metrics.numberOrNull(row.eps_5y_avg),
+                        divYears: Metrics.numberOrNull(row.div_years),
+                        payoutRatio: isEtf ? null : Metrics.numberOrNull(row.payout_ratio),
+                        yield: Metrics.numberOrNull(row.dividend_yield),
+                        beta: Metrics.numberOrNull(row.beta),
+                        pb: isEtf ? null : Metrics.numberOrNull(row.pb_ratio),
+                        pe: isEtf ? null : Metrics.numberOrNull(row.pe_ratio),
+                        category: row.category_tag || 'dividend',
+                        diagnosis: row.diagnosis_note || ''
+                    };
+                });
                 console.log(`⚡ [Supabase] 成功載入 ${STOCKS_DATA.length} 檔使用者股票！`);
             }
         } catch (e) {
@@ -811,12 +819,14 @@ document.addEventListener('DOMContentLoaded', () => {
             await fetchSecretsFromFirebase();
             const u = inputCustomUser.value.trim();
             const p = inputCustomPass.value.trim();
-            if (u === state.config.customUser && p === state.config.customPass) {
+            if (state.config.customPass && u === state.config.customUser && p === state.config.customPass) {
                 setLoggedInUser({ name: u, email: `${u}@system.local`, role: 'user' });
                 loginModal.style.display = 'none';
                 await initSupabaseDataPipeline();
                 renderAppAuthGates();
                 alert(`歡迎回來，${u}！您已成功登入系統（一般用戶權限）。`);
+            } else if (!state.config.customPass) {
+                alert('尚未設定特定帳號密碼，請改用 Google 登入或請管理員於後台設定。');
             } else {
                 alert('帳號或密碼錯誤！請向管理員確認。');
             }
@@ -832,8 +842,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 儲存管理員後台設定
         btnSaveAdminSettings.addEventListener('click', async () => {
+            const configuredCustomPass = adminCustomPass.value.trim();
             state.config.customUser = adminCustomUser.value.trim() || 'admin';
-            state.config.customPass = adminCustomPass.value.trim() || '123456';
+            state.config.customPass = configuredCustomPass;
             state.config.supabaseUrl = adminSupabaseUrl.value.trim();
             state.config.supabaseKey = adminSupabaseKey.value.trim();
             state.config.goldApiKey = adminGoldKey.value.trim();
@@ -1331,6 +1342,27 @@ document.addEventListener('DOMContentLoaded', () => {
         return [];
     }
 
+    function sanitizeDiagnosisMetrics(code, name, price, raw = {}) {
+        const isEtf = Metrics.isEtfCode(code);
+        const result = {
+            ...raw,
+            isEtf,
+            marketCap: Metrics.numberOrNull(raw.marketCap),
+            eps5y: isEtf ? null : Metrics.numberOrNull(raw.eps5y),
+            divYears: Metrics.numberOrNull(raw.divYears),
+            payoutRatio: isEtf ? null : Metrics.numberOrNull(raw.payoutRatio),
+            yield: Metrics.numberOrNull(raw.yield),
+            beta: Metrics.numberOrNull(raw.beta),
+            pb: isEtf ? null : Metrics.numberOrNull(raw.pb),
+            pe: isEtf ? null : Metrics.numberOrNull(raw.pe)
+        };
+        result.category = Metrics.classifyStock({ id: code, name, ...result });
+        if (isEtf || !raw.diagnosis) {
+            result.diagnosis = Metrics.buildDiagnosis({ id: code, name, price, ...result });
+        }
+        return result;
+    }
+
     // 呼叫 Google Studio AI (依選定模型動態呼叫) 進行存股法則深度分析
     async function generateAiStockDiagnosis(code, name, price) {
         const apiKey = state.config.geminiApiKey;
@@ -1390,7 +1422,7 @@ ${promptRules}
                             parsed._source = 'gemini';
                             parsed._model = modelName;
                             console.log(`🤖 [Gemini AI 模型 (${modelName}) 診斷成功 (消耗 ${tokenCount} Tokens)]`, parsed);
-                            return parsed;
+                            return sanitizeDiagnosisMetrics(code, name, price, parsed);
                         } else {
                             console.warn(`Gemini API 模型 ${modelName} 回傳 HTTP ${res.status}，正在嘗試備援處理...`);
                             if (res.status === 429 || res.status === 503) {
@@ -1407,21 +1439,10 @@ ${promptRules}
             }
         }
 
-        // 備援方案：依 4 本存股經典法則知識庫進行智慧規則推論
-        const isEtf = code.startsWith('00');
-        const isFinancial = code.startsWith('28') || code.startsWith('58');
-        const isGov = ['2886', '2892', '5880', '2880', '2412'].includes(code);
-        
-        let category = 'dividend';
-        let marketCap = 800;
-        let eps5y = 2.0;
-        let divYears = 12;
-        let payoutRatio = 78.0;
-        let y = 5.2;
-        let beta = 0.55;
-        let pb = 1.35;
-        let pe = 16.0;
-        let diag = '';
+        // 備援方案只保留 API 能證實的數值；缺值維持 null，不以通用常數冒充真實資料。
+        let y = null;
+        let pb = null;
+        let pe = null;
 
         // 主動嘗試連線 FinMind TaiwanStockPER 抓取真實本益比(PER)、淨值比(PBR)與殖利率
         try {
@@ -1446,48 +1467,16 @@ ${promptRules}
             console.warn(`FinMind PER fetch for ${code} fallback:`, perErr);
         }
 
-        if (isGov) {
-            category = 'dividend';
-            beta = 0.45;
-            divYears = 20;
-            payoutRatio = 82.0;
-            if (!y) y = 5.2;
-            diag = `${name} (${code})：官股/防禦型龍頭！Beta 僅約 ${beta} 極為抗跌，連續配息逾 ${divYears} 年，符合穩健存股 5 大維度標準，為安心長抱首選。`;
-        } else if (isEtf) {
-            category = 'cashflow';
-            beta = 0.72;
-            divYears = 6;
-            payoutRatio = 90.0;
-            if (!y) y = 6.5;
-            diag = `${name} (${code})：人氣指數型/高股息 ETF，產業分散且現金流充沛，年化殖利率約 ${y}%，符合定期領息與被動現金流原則。`;
-        } else if (isFinancial) {
-            category = 'cashflow';
-            beta = 0.65;
-            divYears = 15;
-            payoutRatio = 80.0;
-            if (!y) y = 5.5;
-            diag = `${name} (${code})：金融權值指標股，資訊透明且月月公布獲利，殖利率高於 5% 買進安全線，適合定期定額累積被動收入。`;
-        } else {
-            category = price > 150 ? 'swing' : 'dividend';
-            beta = price > 150 ? 1.2 : 0.75;
-            divYears = 10;
-            payoutRatio = 72.0;
-            if (!y) y = price > 150 ? 2.5 : 4.8;
-            diag = `${name} (${code})：產業龍頭標的，獲利動能明確，${category === 'swing' ? '波動較大適合逢低波段操作賺取價差' : '配息穩定適合長期分批佈局'}。`;
-        }
-
-        return {
-            category,
-            marketCap,
-            eps5y,
-            divYears,
-            payoutRatio,
+        return sanitizeDiagnosisMetrics(code, name, price, {
+            marketCap: null,
+            eps5y: null,
+            divYears: null,
+            payoutRatio: null,
             yield: y,
-            beta,
+            beta: null,
             pb,
-            pe,
-            diagnosis: diag
-        };
+            pe
+        });
     }
 
     // =========================================================================
@@ -1733,15 +1722,16 @@ ${promptRules}
                     const newStock = {
                         id: target.code,
                         name: target.name,
+                        isEtf: Metrics.isEtfCode(target.code),
                         price: price,
-                        marketCap: aiResult.marketCap || 500,
-                        eps5y: aiResult.eps5y || 2.0,
-                        divYears: aiResult.divYears || 10,
-                        payoutRatio: aiResult.payoutRatio || 75.0,
-                        yield: aiResult.yield || 5.0,
-                        beta: aiResult.beta || (aiResult.category === 'dividend' ? 0.48 : 0.8),
-                        pb: aiResult.pb || 1.35,
-                        pe: aiResult.pe || 15.5,
+                        marketCap: aiResult.marketCap ?? null,
+                        eps5y: aiResult.eps5y ?? null,
+                        divYears: aiResult.divYears ?? null,
+                        payoutRatio: aiResult.payoutRatio ?? null,
+                        yield: aiResult.yield ?? null,
+                        beta: aiResult.beta ?? null,
+                        pb: aiResult.pb ?? null,
+                        pe: aiResult.pe ?? null,
                         category: aiResult.category || 'dividend',
                         diagnosis: aiResult.diagnosis || `${target.name} (${target.code})：已完成 AI 存股健檢。`
                     };
@@ -1782,7 +1772,8 @@ ${promptRules}
                     const aiSourceTag = aiResult._source === 'gemini' 
                         ? `<span style="color: #4338ca; font-weight: 600;">🤖 Gemini (${aiResult._model || 'AI'})</span>` 
                         : `<span style="color: #64748b; font-weight: 600;">🛡️ 存股規則庫</span>`;
-                    logItem.innerHTML = `<span style="color: #16a34a; font-weight: bold;">✔ [${target.code} ${target.name}]</span> NT$${newStock.price.toFixed(2)} ｜ ${aiSourceTag} ｜ ${catText} ｜ 殖利率 ${newStock.yield}% ➔ <span style="color: #059669;">已存入 Supabase</span>`;
+                    const yieldLabel = newStock.yield === null ? '待同步' : `${newStock.yield}%`;
+                    logItem.innerHTML = `<span style="color: #16a34a; font-weight: bold;">✔ [${target.code} ${target.name}]</span> NT$${newStock.price.toFixed(2)} ｜ ${aiSourceTag} ｜ ${catText} ｜ 殖利率 ${yieldLabel} ➔ <span style="color: #059669;">已存入 Supabase</span>`;
                     batchLogList.appendChild(logItem);
                     batchLogList.scrollTop = batchLogList.scrollHeight;
 
@@ -2047,28 +2038,29 @@ ${promptRules}
             const diag = addStockDiagnosisInput.value.trim() || `${name} (${code})：已加入專屬存股健檢庫。`;
 
             const metrics = tempCalculatedMetrics || {
-                marketCap: 500,
-                eps5y: 2.0,
-                divYears: 10,
-                payoutRatio: 75.0,
-                yield: 5.0,
-                beta: category === 'dividend' ? 0.48 : category === 'cashflow' ? 0.72 : 1.15,
-                pb: 1.35,
-                pe: 15.5
+                marketCap: null,
+                eps5y: null,
+                divYears: null,
+                payoutRatio: null,
+                yield: null,
+                beta: null,
+                pb: null,
+                pe: null
             };
 
             const newStock = {
                 id: code,
                 name: name,
+                isEtf: Metrics.isEtfCode(code),
                 price: price,
-                marketCap: metrics.marketCap || 500,
-                eps5y: metrics.eps5y || 2.0,
-                divYears: metrics.divYears || 10,
-                payoutRatio: metrics.payoutRatio || 75.0,
-                yield: metrics.yield || 5.0,
-                beta: metrics.beta || (category === 'dividend' ? 0.48 : 0.8),
-                pb: metrics.pb || 1.35,
-                pe: metrics.pe || 15.5,
+                marketCap: metrics.marketCap ?? null,
+                eps5y: metrics.eps5y ?? null,
+                divYears: metrics.divYears ?? null,
+                payoutRatio: metrics.payoutRatio ?? null,
+                yield: metrics.yield ?? null,
+                beta: metrics.beta ?? null,
+                pb: metrics.pb ?? null,
+                pe: metrics.pe ?? null,
                 category: category,
                 diagnosis: diag
             };
@@ -2138,6 +2130,94 @@ ${promptRules}
         renderStocks();
     }
 
+    function mapFinMindDividendRow(stockId, item) {
+        const cash = parseFloat(item.CashEarningsDistribution || 0) + parseFloat(item.CashStatutorySurplus || 0);
+        const stockDividend = parseFloat(item.StockEarningsDistribution || 0) + parseFloat(item.StockStatutorySurplus || 0);
+        const exDate = item.CashExDividendTradingDate || item.StockExDividendTradingDate || '';
+        const paymentDate = item.CashDividendPaymentDate || '';
+        const year = formatDividendYear(item.year || item.date?.slice(0, 4) || '', paymentDate, exDate);
+        return {
+            id: `${stockId}_${item.date || 'nodate'}_${year}_${exDate || 'noex'}`.replace(/\s+/g, '_'),
+            stock_id: stockId,
+            year,
+            cash_dividend: parseFloat(cash.toFixed(4)),
+            stock_dividend: parseFloat(stockDividend.toFixed(4)),
+            total_dividend: parseFloat((cash + stockDividend).toFixed(4)),
+            ex_dividend_date: exDate || '--',
+            payment_date: paymentDate || '--',
+            announcement_date: item.date || ''
+        };
+    }
+
+    async function syncDividendHistory(stock, client) {
+        let freshRows = [];
+        try {
+            const response = await fetch(buildFinMindUrl('TaiwanStockDividend', {
+                data_id: stock.id,
+                start_date: '2000-01-01'
+            }));
+            const json = await response.json();
+            if (json.msg === 'success' && Array.isArray(json.data) && json.data.length > 0) {
+                freshRows = cleanAndDeduplicateDividends(json.data.map(item => mapFinMindDividendRow(stock.id, item)));
+                if (client && freshRows.length > 0) {
+                    const cleanRows = freshRows.map(row => ({
+                        id: row.id,
+                        stock_id: row.stock_id,
+                        year: row.year,
+                        cash_dividend: row.cash_dividend,
+                        stock_dividend: row.stock_dividend,
+                        total_dividend: row.total_dividend,
+                        ex_dividend_date: row.ex_dividend_date,
+                        payment_date: row.payment_date,
+                        announcement_date: row.announcement_date
+                    }));
+                    const { error: upsertError } = await client.from('stock_dividends').upsert(cleanRows, { onConflict: 'id' });
+                    if (!upsertError) {
+                        const { data: existingRows } = await client.from('stock_dividends').select('id').eq('stock_id', stock.id);
+                        const validIds = new Set(cleanRows.map(row => row.id));
+                        const staleIds = (existingRows || []).map(row => row.id).filter(id => !validIds.has(id));
+                        for (let index = 0; index < staleIds.length; index += 100) {
+                            await client.from('stock_dividends').delete().in('id', staleIds.slice(index, index + 100));
+                        }
+                    } else {
+                        console.warn(`配息資料寫入失敗 (${stock.id})`, upsertError);
+                    }
+                }
+                return freshRows;
+            }
+        } catch (error) {
+            console.warn(`FinMind 配息同步失敗 (${stock.id})`, error);
+        }
+
+        if (client) {
+            const { data } = await client.from('stock_dividends').select('*').eq('stock_id', stock.id);
+            if (data) return cleanAndDeduplicateDividends(data);
+        }
+        return freshRows;
+    }
+
+    async function loadPriceHistoryByStock(client, stockIds) {
+        const byStock = new Map();
+        if (!client) return byStock;
+        try {
+            const ids = [...new Set([...stockIds, '0050'])];
+            const { data, error } = await client
+                .from('stock_prices')
+                .select('stock_id,trade_date,close_price')
+                .in('stock_id', ids)
+                .order('trade_date', { ascending: true })
+                .limit(10000);
+            if (error) throw error;
+            for (const row of data || []) {
+                if (!byStock.has(row.stock_id)) byStock.set(row.stock_id, []);
+                byStock.get(row.stock_id).push(row);
+            }
+        } catch (error) {
+            console.warn('Beta 歷史行情讀取失敗', error);
+        }
+        return byStock;
+    }
+
     // 批量連線台灣證交所官方開放資料庫 (TWSE OpenAPI) 抓取最新真實行情與全套指標
     async function refreshAllStockPrices(showNotice = false) {
         if (!STOCKS_DATA || STOCKS_DATA.length === 0) {
@@ -2154,14 +2234,16 @@ ${promptRules}
         const client = getSupabaseClient();
         let updatedCount = 0;
 
-        // 1. 批量向台灣證券交易所 (TWSE) 官方開放資料庫查詢全體即時收盤價與 PER / PBR / 殖利率
+        // 1. 批量向台灣證券交易所 (TWSE) 官方開放資料庫查詢行情、估值與 ETF 基本資料
         let twseDayMap = {};
         let twseBwibbuMap = {};
+        let twseFundMap = {};
 
         try {
-            const [dayRes, bwibbuRes] = await Promise.all([
+            const [dayRes, bwibbuRes, fundRes] = await Promise.all([
                 fetch('https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL').then(r => r.ok ? r.json() : null).catch(() => null),
-                fetch('https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL').then(r => r.ok ? r.json() : null).catch(() => null)
+                fetch('https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL').then(r => r.ok ? r.json() : null).catch(() => null),
+                fetch('https://openapi.twse.com.tw/v1/opendata/t187ap47_L').then(r => r.ok ? r.json() : null).catch(() => null)
             ]);
 
             if (dayRes && Array.isArray(dayRes)) {
@@ -2184,11 +2266,27 @@ ${promptRules}
                     }
                 });
             }
+
+            if (fundRes && Array.isArray(fundRes)) {
+                fundRes.forEach(item => {
+                    const code = item['基金代號'];
+                    if (!code) return;
+                    twseFundMap[code] = {
+                        unitCount: Metrics.numberOrNull(item['發行單位數/轉換數']),
+                        indexName: item['標的指數/追蹤指數名稱'] || '',
+                        fundType: item['基金類型'] || '',
+                        listingDate: item['上市日期'] || ''
+                    };
+                });
+            }
         } catch (twseErr) {
             console.warn("TWSE OpenAPI fetch notice:", twseErr);
         }
 
-        // 2. 逐一為每檔股票更新 8 大真實維度
+        const priceHistoryByStock = await loadPriceHistoryByStock(client, STOCKS_DATA.map(stock => stock.id));
+        const benchmarkRows = priceHistoryByStock.get('0050') || [];
+
+        // 2. 逐一更新可由官方資料或資料庫明細重算的指標
         for (const stock of STOCKS_DATA) {
             try {
                 // A. 股價更新 (優先取 TWSE 官方)
@@ -2206,60 +2304,40 @@ ${promptRules}
                     } catch (pErr) {}
                 }
 
-                // B. 本益比 (PE) 與 淨值比 (PB) 更新 (優先取 TWSE 官方)
-                if (twseBwibbuMap[stock.id]) {
-                    if (twseBwibbuMap[stock.id].pe !== null) stock.pe = twseBwibbuMap[stock.id].pe;
-                    if (twseBwibbuMap[stock.id].pb !== null) stock.pb = twseBwibbuMap[stock.id].pb;
+                // B. ETF 使用官方基金基本資料；個股估值才使用 BWIBBU。
+                const fundMetadata = twseFundMap[stock.id] || null;
+                stock.isEtf = Boolean(fundMetadata) || Metrics.isEtfCode(stock.id);
+                if (stock.isEtf) {
+                    stock.marketCap = Metrics.estimateEtfFundSize(fundMetadata?.unitCount, stock.price);
+                    stock.eps5y = null;
+                    stock.payoutRatio = null;
+                    stock.pb = null;
+                    stock.pe = null;
+                } else if (twseBwibbuMap[stock.id]) {
+                    stock.pe = twseBwibbuMap[stock.id].pe;
+                    stock.pb = twseBwibbuMap[stock.id].pb;
                 }
 
-                // C. 股本規模、5年平均EPS、連續配息年數之精確基準
-                const KNOWN_FUNDAMENTALS = {
-                    '2330': { marketCap: 2593.7, eps5y: 48.97, divYears: 12, payoutRatio: 45.0, beta: 1.2 },
-                    '2324': { marketCap: 441.4, eps5y: 2.00, divYears: 12, payoutRatio: 72.0, beta: 0.75 },
-                    '2337': { marketCap: 185.0, eps5y: 2.04, divYears: 7, payoutRatio: 60.0, beta: 0.95 },
-                    '2886': { marketCap: 1440.0, eps5y: 1.95, divYears: 12, payoutRatio: 82.0, beta: 0.45 },
-                    '5880': { marketCap: 1510.0, eps5y: 1.35, divYears: 14, payoutRatio: 78.0, beta: 0.48 },
-                    '2002': { marketCap: 1577.0, eps5y: 1.10, divYears: 15, payoutRatio: 85.0, beta: 0.65 },
-                    '00878': { marketCap: 6150.0, eps5y: 1.60, divYears: 6, payoutRatio: 90.0, beta: 0.72 },
-                    '006208': { marketCap: 2150.0, eps5y: 6.20, divYears: 6, payoutRatio: 90.0, beta: 0.98 },
-                    '0050': { marketCap: 4350.0, eps5y: 7.50, divYears: 10, payoutRatio: 90.0, beta: 1.0 },
-                    '0056': { marketCap: 3680.0, eps5y: 2.80, divYears: 13, payoutRatio: 90.0, beta: 0.75 },
-                    '00919': { marketCap: 3200.0, eps5y: 2.20, divYears: 4, payoutRatio: 90.0, beta: 0.75 },
-                    '00929': { marketCap: 2900.0, eps5y: 1.90, divYears: 3, payoutRatio: 90.0, beta: 0.75 }
-                };
-
-                if (KNOWN_FUNDAMENTALS[stock.id]) {
-                    const f = KNOWN_FUNDAMENTALS[stock.id];
-                    stock.marketCap = f.marketCap;
-                    stock.eps5y = f.eps5y;
-                    stock.divYears = f.divYears;
-                    stock.payoutRatio = f.payoutRatio;
-                    stock.beta = f.beta;
+                // C. 重新同步完整配息歷史，再由明細回算連續年數與近期待遇殖利率。
+                const dividendRows = await syncDividendHistory(stock, client);
+                if (dividendRows.length > 0) {
+                    stock.divYears = Metrics.calculateConsecutiveDividendYears(dividendRows);
+                    const annualCash = calculateAnnualCashDividend(dividendRows);
+                    stock.yield = annualCash > 0 && stock.price > 0
+                        ? parseFloat(((annualCash / stock.price) * 100).toFixed(2))
+                        : null;
+                } else {
+                    stock.divYears = null;
+                    stock.yield = stock.isEtf ? null : (twseBwibbuMap[stock.id]?.yield ?? null);
                 }
 
-                // D. 殖利率計算 (優先採用歷年真實配息累加)
-                if (client) {
-                    try {
-                        const { data: divRows } = await client
-                            .from('stock_dividends')
-                            .select('cash_dividend, stock_dividend, total_dividend, ex_dividend_date, payment_date, announcement_date, year')
-                            .eq('stock_id', stock.id)
-                            .order('announcement_date', { ascending: false });
+                // D. Beta 以 Supabase 的每日收盤報酬對 0050 重算，至少需要 20 個共同觀察值。
+                const beta = Metrics.calculateBeta(priceHistoryByStock.get(stock.id) || [], benchmarkRows);
+                if (beta !== null) stock.beta = parseFloat(beta.toFixed(2));
+                else stock.beta = null;
 
-                        if (divRows && divRows.length > 0 && stock.price > 0) {
-                            const annualCash = calculateAnnualCashDividend(divRows);
-                            if (annualCash > 0) {
-                                stock.yield = parseFloat(((annualCash / stock.price) * 100).toFixed(2));
-                            }
-                        }
-                    } catch (divErr) {
-                        console.warn("Dividend yield calculation fallback", divErr);
-                    }
-                }
-
-                if (twseBwibbuMap[stock.id] && (!stock.yield || stock.yield === 0)) {
-                    if (twseBwibbuMap[stock.id].yield !== null) stock.yield = twseBwibbuMap[stock.id].yield;
-                }
+                stock.category = Metrics.classifyStock(stock, fundMetadata);
+                stock.diagnosis = Metrics.buildDiagnosis(stock, fundMetadata);
 
                 // E. 同步更新至 Supabase stocks 資料庫
                 if (client) {
@@ -2273,6 +2351,8 @@ ${promptRules}
                         div_years: stock.divYears,
                         payout_ratio: stock.payoutRatio,
                         beta: stock.beta,
+                        category_tag: stock.category,
+                        diagnosis_note: stock.diagnosis,
                         updated_at: new Date()
                     }).eq('stock_id', stock.id);
                 }
@@ -2287,54 +2367,16 @@ ${promptRules}
 
         if (btnRefresh) {
             btnRefresh.disabled = false;
-            btnRefresh.innerHTML = '<i class="fa-solid fa-arrows-rotate"></i> 更新最新股價';
+            btnRefresh.innerHTML = '<i class="fa-solid fa-arrows-rotate"></i> 更新最新行情';
         }
 
         if (showNotice) {
-            alert(`🎉 成功同步 ${updatedCount} 檔股票的台灣證交所最新官方行情與真實指標！已存入 Supabase。`);
+            alert(`🎉 已同步 ${updatedCount} 檔標的的最新股價、配息、殖利率、Beta 與 ETF 規模；可驗證資料已存入 Supabase。`);
         }
     }
 
     function evaluateStockHealth(stock) {
-        const metrics = [];
-        let score = 0;
-
-        const passCap = stock.marketCap >= 300;
-        if (passCap) score++;
-        metrics.push({ label: '股本規模', val: `${stock.marketCap} 億`, pass: passCap ? 'pass' : 'warn', desc: passCap ? '≥300億 大型不倒翁' : '中小型需留意流動性' });
-
-        const passEps = stock.eps5y >= 1.0;
-        if (passEps) score++;
-        metrics.push({ label: '5年平均EPS', val: `${stock.eps5y} 元`, pass: passEps ? 'pass' : 'fail', desc: passEps ? '獲利穩定達標' : '獲利過低或衰退' });
-
-        const passDivYears = stock.divYears >= 10;
-        if (passDivYears) score++;
-        metrics.push({ label: '連續配息', val: `${stock.divYears} 年`, pass: passDivYears ? 'pass' : 'warn', desc: passDivYears ? '歷經多空考驗' : '<10年觀察中' });
-
-        const passPayout = stock.payoutRatio >= 70;
-        if (passPayout) score++;
-        metrics.push({ label: '盈餘分配率', val: `${stock.payoutRatio}%`, pass: passPayout ? 'pass' : 'warn', desc: passPayout ? '公司大方分紅' : '<70% 保留盈餘較多' });
-
-        let passYield = 'fail';
-        if (stock.yield >= 5.0) { passYield = 'pass'; score++; }
-        else if (stock.yield >= 4.0) { passYield = 'warn'; }
-        metrics.push({ label: '現金殖利率', val: `${stock.yield}%`, pass: passYield, desc: stock.yield >= 5.0 ? '≥5% 便宜好買點' : '<5% 偏貴建議暫緩' });
-
-        let passBeta = 'fail';
-        if (stock.beta < 0.6) { passBeta = 'pass'; score++; }
-        else if (stock.beta <= 0.85) { passBeta = 'pass'; score++; }
-        else { passBeta = 'warn'; }
-        metrics.push({ label: 'Beta 波動度', val: `${stock.beta}`, pass: passBeta, desc: stock.beta < 0.8 ? '牛皮抗跌抱得安心' : '波動較大適合價差' });
-
-        const passPb = stock.pb < 2.5;
-        if (passPb) score++;
-        metrics.push({ label: '股價淨值比', val: `${stock.pb}`, pass: passPb ? 'pass' : 'fail', desc: passPb ? '<2.5 未過度炒作' : '股價偏離淨值過高' });
-
-        const passPe = stock.pe <= 20;
-        if (passPe) score++;
-        metrics.push({ label: '本益比 PE', val: `${stock.pe}`, pass: passPe ? 'pass' : 'warn', desc: passPe ? '物美價廉' : '偏高需評估成長性' });
-
-        return { score, total: 8, metrics };
+        return Metrics.evaluateStockHealth(stock);
     }
 
     function renderStocks() {
@@ -2398,7 +2440,7 @@ ${promptRules}
             if (state.currentFilter === 'swing') return stock.category === 'swing';
             if (state.currentFilter === 'high-pass') {
                 const evalResult = evaluateStockHealth(stock);
-                return evalResult.score >= 6;
+                return evalResult.total > 0 && (evalResult.score / evalResult.total) >= 0.75;
             }
             return true;
         });
@@ -2419,10 +2461,11 @@ ${promptRules}
         filtered.forEach(stock => {
             const health = evaluateStockHealth(stock);
             const isFav = state.watchlist.has(stock.id);
-            const scorePercent = Math.round((health.score / health.total) * 100);
+            const scorePercent = health.total > 0 ? Math.round((health.score / health.total) * 100) : 0;
 
             let catBadge = '';
-            if (stock.category === 'dividend') catBadge = `<span class="category-badge category-dividend"><i class="fa-solid fa-crown"></i> 🏆 適合穩健存股</span>`;
+            if (stock.category === 'dividend' && stock.isEtf) catBadge = `<span class="category-badge category-dividend"><i class="fa-solid fa-chart-line"></i> 📊 適合長期指數投資</span>`;
+            else if (stock.category === 'dividend') catBadge = `<span class="category-badge category-dividend"><i class="fa-solid fa-crown"></i> 🏆 適合穩健存股</span>`;
             else if (stock.category === 'cashflow') catBadge = `<span class="category-badge category-cashflow"><i class="fa-solid fa-money-bill-wave"></i> 💰 適合領高利息</span>`;
             else catBadge = `<span class="category-badge category-swing"><i class="fa-solid fa-bolt"></i> 🚀 適合波段賺價差</span>`;
 
@@ -2461,7 +2504,7 @@ ${promptRules}
                 </div>
 
                 <div class="diagnosis-box">
-                    <i class="fa-solid fa-wand-magic-sparkles" style="color: var(--accent-blue);"></i> <strong>AI 存股診斷：</strong>${safeDiagnosis}
+                    <i class="fa-solid fa-chart-simple" style="color: var(--accent-blue);"></i> <strong>資料診斷：</strong>${safeDiagnosis}
                 </div>
 
                 <div class="metrics-pill-grid">
@@ -2469,7 +2512,7 @@ ${promptRules}
                         <div class="metric-pill" title="${m.desc}">
                             <span class="metric-pill-label">${m.label}</span>
                             <span class="metric-pill-val metric-${m.pass}">
-                                ${m.pass === 'pass' ? '✅' : m.pass === 'warn' ? '⚠️' : '❌'} ${m.val}
+                                ${m.pass === 'pass' ? '✅' : m.pass === 'warn' ? '⚠️' : m.pass === 'na' ? '➖' : '❌'} ${m.val}
                             </span>
                         </div>
                     `).join('')}
@@ -2719,7 +2762,7 @@ ${promptRules}
     }
 
     // =========================================================================
-    // 11.5 股票歷年配息紀錄 (Supabase 優先直出 + 25 年智慧增量與深度偵測自動入庫)
+    // 11.5 股票歷年配息紀錄 (Supabase 快取先顯示 + FinMind 25 年完整覆核)
     // =========================================================================
     async function loadStockDividends(stock) {
         if (!stock || !stock.id) return;
@@ -2730,10 +2773,6 @@ ${promptRules}
 
         const client = getSupabaseClient();
         let dividendList = [];
-        let hitSupabase = false;
-        let latestAnnYear = null;
-        let oldestAnnYear = null;
-        const currentYear = new Date().getFullYear();
 
         // 1. Supabase 快取優先查詢並 0 秒立刻渲染
         if (client) {
@@ -2746,17 +2785,7 @@ ${promptRules}
 
                 if (dbDividends && !error && dbDividends.length > 0) {
                     dividendList = dbDividends;
-                    hitSupabase = true;
-                    // 取得 DB 中最新與最舊的公告年份或除息年份
-                    for (const d of dbDividends) {
-                        const yrMatch = (d.announcement_date || d.ex_dividend_date || d.year || '').match(/(\d{4})/);
-                        if (yrMatch) {
-                            const yr = parseInt(yrMatch[1], 10);
-                            if (!latestAnnYear || yr > latestAnnYear) latestAnnYear = yr;
-                            if (!oldestAnnYear || yr < oldestAnnYear) oldestAnnYear = yr;
-                        }
-                    }
-                    console.log(`⚡ [Supabase 命中] 成功從 Supabase 載入 ${stock.name} ${dividendList.length} 筆歷年配息紀錄 (範圍: ${oldestAnnYear || '未知'} ~ ${latestAnnYear || '未知'})！`);
+                    console.log(`⚡ [Supabase 命中] 成功從 Supabase 載入 ${stock.name} ${dividendList.length} 筆歷年配息紀錄！`);
                     
                     // 立刻渲染現有配息列表，0 秒無感延遲
                     renderDividendUI(dividendList, stock);
@@ -2766,130 +2795,31 @@ ${promptRules}
             }
         }
 
-        // 2. 智慧增量與缺漏雙向偵測 (向下歷史深度補齊 + 向上最新決議補齊)：
-        // - 若完全無資料 ➔ 抓取 2000-01-01 至今 25 年完整全歷史
-        // - 若歷史深度不完整 (最舊年份 > 2012 且總筆數 < 15 筆) ➔ 向下補齊 2000-01-01 至今全歷史
-        // - 若最新年份落後當前年份 (例如 latestAnnYear < currentYear) ➔ 向上補齊近 1~2 年
-        // - 若已深度完整且是最新年份 ➔ 不發送 API 請求
-        let needFetch = false;
-        let fetchStartDate = '2000-01-01';
-
-        if (!hitSupabase || dividendList.length === 0) {
-            needFetch = true;
-            fetchStartDate = '2000-01-01';
-        } else if (oldestAnnYear && oldestAnnYear > 2012 && dividendList.length < 15) {
-            // 抓到像 006208 這種先前只有 2023~2026 的情況，立即向下自動補齊全歷史！
-            needFetch = true;
-            fetchStartDate = '2000-01-01';
-        } else if (latestAnnYear && latestAnnYear < currentYear) {
-            needFetch = true;
-            fetchStartDate = `${latestAnnYear - 1}-01-01`;
-        }
-
-        if (needFetch) {
-            try {
-                console.log(`🌐 [API 智慧同步] 正在為 ${stock.name} (${stock.id}) 向 FinMind 查詢自 ${fetchStartDate} 起之歷年配息...`);
-                const apiUrl = buildFinMindUrl('TaiwanStockDividend', {
-                    data_id: stock.id,
-                    start_date: fetchStartDate
-                });
-                const res = await fetch(apiUrl);
-                const json = await res.json();
-                if (json.msg === 'success' && json.data && json.data.length > 0) {
-                    const rawSorted = json.data.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-                    
-                    const fetchedList = rawSorted.map(item => {
-                        const cash = parseFloat(item.CashEarningsDistribution || 0) + parseFloat(item.CashStatutorySurplus || 0);
-                        const stk = parseFloat(item.StockEarningsDistribution || 0) + parseFloat(item.StockStatutorySurplus || 0);
-                        const total = cash + stk;
-                        const exDate = item.CashExDividendTradingDate || item.StockExDividendTradingDate || '';
-                        const payDate = item.CashDividendPaymentDate || '';
-                        const rawYr = item.year || (item.date ? item.date.slice(0, 4) + '年' : '歷年');
-                        const yr = formatDividendYear(rawYr, payDate, exDate);
-                        const rowId = `${stock.id}_${item.date}_${yr}_${exDate || 'noex'}`.replace(/\s+/g, '_');
-
-                        return {
-                            id: rowId,
-                            stock_id: stock.id,
-                            year: yr,
-                            cash_dividend: parseFloat(cash.toFixed(4)),
-                            stock_dividend: parseFloat(stk.toFixed(4)),
-                            total_dividend: parseFloat(total.toFixed(4)),
-                            ex_dividend_date: exDate || '--',
-                            payment_date: payDate || '--',
-                            announcement_date: item.date || ''
-                        };
-                    });
-
-                    // 合併現有 DB 資料與新抓取資料
-                    const mergedMap = new Map();
-                    dividendList.forEach(item => mergedMap.set(item.id || `${stock.id}_${item.announcement_date}_${item.year}_${item.ex_dividend_date}`, item));
-                    fetchedList.forEach(item => mergedMap.set(item.id || `${stock.id}_${item.announcement_date}_${item.year}_${item.ex_dividend_date}`, item));
-                    
-                    let allDividends = Array.from(mergedMap.values());
-                    allDividends = enrichDividendList(allDividends);
-                    allDividends.forEach(item => {
-                        if (item.formatted_period) {
-                            item.year = item.formatted_period;
-                        }
-                    });
-
-                    dividendList = allDividends;
-
-                    // 自動整批入庫至 Supabase stock_dividends (嚴格過濾多餘前端欄位，確保 100% 符合 DB Schema)
-                    if (client && dividendList.length > 0) {
-                        try {
-                            const cleanRowsToUpsert = dividendList.map(item => ({
-                                id: item.id || `${stock.id}_${item.announcement_date || ''}_${item.year || ''}_${item.ex_dividend_date || 'noex'}`.replace(/\s+/g, '_'),
-                                stock_id: stock.id,
-                                year: item.formatted_period || item.year || '',
-                                cash_dividend: parseFloat(item.cash_dividend || 0),
-                                stock_dividend: parseFloat(item.stock_dividend || 0),
-                                total_dividend: parseFloat(item.total_dividend || 0),
-                                ex_dividend_date: item.ex_dividend_date || '--',
-                                payment_date: item.payment_date || '--',
-                                announcement_date: item.announcement_date || ''
-                            }));
-
-                            const { error: upsertErr } = await client
-                                .from('stock_dividends')
-                                .upsert(cleanRowsToUpsert, { onConflict: 'id' });
-                            
-                            if (upsertErr) {
-                                console.error("❌ Supabase stock_dividends upsert error:", upsertErr);
-                            } else {
-                                console.log(`💾 [自動入庫] 成功將 ${stock.name} ${cleanRowsToUpsert.length} 筆配息紀錄寫入 Supabase stock_dividends！`);
-                            }
-                        } catch (insE) {
-                            console.warn("Supabase stock_dividends upsert exception:", insE);
-                        }
-                    }
-
-                    // 重新渲染最新配息表格與統計指標
-                    renderDividendUI(dividendList, stock);
-                } else if (json.msg && json.msg.includes('reach the upper limit')) {
-                    console.warn(`⚠️ FinMind API 限流提示：建議在「系統設定 (⚙️)」中填入免費 FinMind Token 享有每小時 600 次獨立額度。`);
-                }
-            } catch (apiErr) {
-                console.error("FinMind dividend fetch error:", apiErr);
-            }
+        // 2. 每次開啟都以 FinMind 完整歷史覆核；API 失敗時保留 Supabase 快取。
+        const syncedRows = await syncDividendHistory(stock, client);
+        if (syncedRows.length > 0) {
+            dividendList = syncedRows;
         }
 
         // 4. 計算全年/近4季年化現金股利並校正當前股票現金殖利率
         if (dividendList && dividendList.length > 0 && stock && stock.price > 0) {
+            stock.divYears = Metrics.calculateConsecutiveDividendYears(dividendList);
             const annualCash = calculateAnnualCashDividend(dividendList);
             if (annualCash > 0) {
                 const accurateYield = parseFloat(((annualCash / stock.price) * 100).toFixed(2));
-                if (accurateYield && stock.yield !== accurateYield) {
-                    stock.yield = accurateYield;
-                    if (client) {
-                        client.from('stocks').update({
-                            dividend_yield: accurateYield,
-                            updated_at: new Date()
-                        }).eq('stock_id', stock.id).then(() => {}).catch(() => {});
-                    }
-                    renderStocks();
+                stock.yield = accurateYield;
+                stock.category = Metrics.classifyStock(stock);
+                stock.diagnosis = Metrics.buildDiagnosis(stock);
+                if (client) {
+                    client.from('stocks').update({
+                        dividend_yield: accurateYield,
+                        div_years: stock.divYears,
+                        category_tag: stock.category,
+                        diagnosis_note: stock.diagnosis,
+                        updated_at: new Date()
+                    }).eq('stock_id', stock.id).then(() => {}).catch(() => {});
                 }
+                renderStocks();
             }
         }
 
@@ -3097,49 +3027,7 @@ ${promptRules}
     }
 
     function calculateAnnualCashDividend(dividendList) {
-        if (!dividendList || dividendList.length === 0) return 0;
-        dividendList = enrichDividendList(dividendList);
-
-        // 判斷是否為月配息 / 季配息 / 半年配
-        const yearCountMap = {};
-        let isMonthly = false;
-        let isQuarterly = false;
-        let isHalfYear = false;
-
-        dividendList.forEach(item => {
-            const formattedYr = item.formatted_period || formatDividendYear(item.year, item.payment_date, item.ex_dividend_date);
-            if (formattedYr.includes('/')) {
-                isMonthly = true;
-            } else if (formattedYr.includes('Q')) {
-                isQuarterly = true;
-            } else if (formattedYr.includes('H')) {
-                isHalfYear = true;
-            }
-            const yKey = formattedYr.slice(0, 4);
-            if (yKey) {
-                yearCountMap[yKey] = (yearCountMap[yKey] || 0) + 1;
-            }
-        });
-
-        const isMultiPeriod = isMonthly || isQuarterly || isHalfYear || Object.values(yearCountMap).some(c => c > 1);
-
-        if (isMultiPeriod) {
-            // 月配息取最新 12 個月加總、季配息取最新 4 季、半年配取最新 2 次
-            const maxPeriods = isMonthly ? 12 : (isQuarterly ? 4 : (isHalfYear ? 2 : 4));
-            const periodsToSum = Math.min(dividendList.length, maxPeriods);
-            const sumLatestPeriods = dividendList.slice(0, periodsToSum).reduce((sum, r) => sum + (parseFloat(r.cash_dividend) || 0), 0);
-            return sumLatestPeriods;
-        } else {
-            // 年配息標的（如中鋼 2002、兆豐金 2886、廣達 2382、玉山金 2884）：
-            // 嚴禁跨年累加！直接取最新一年的真實單年現金股利
-            for (let i = 0; i < dividendList.length; i++) {
-                const cash = parseFloat(dividendList[i].cash_dividend) || 0;
-                if (cash > 0) {
-                    return cash;
-                }
-            }
-            return parseFloat(dividendList[0].cash_dividend) || 0;
-        }
+        return Metrics.calculateAnnualCashDividend(dividendList);
     }
 
     function renderDividendUI(list, stock) {
@@ -3162,21 +3050,9 @@ ${promptRules}
         // 計算累計與平均指標
         const totalCount = list.length;
         // 近 3 年 / 近 5 年現金股利平均 (按西元年度加總計算)
-        const yearCashMap = {};
-        list.forEach(item => {
-            const formattedYr = item.formatted_period || formatDividendYear(item.year, item.payment_date, item.ex_dividend_date);
-            const yKey = formattedYr.slice(0, 4); // 擷取 4 碼西元年 (例如 2025, 2024)
-            if (yKey && /^\d{4}$/.test(yKey)) {
-                yearCashMap[yKey] = (yearCashMap[yKey] || 0) + (parseFloat(item.cash_dividend) || 0);
-            }
-        });
-        const yearlyCashValues = Object.values(yearCashMap);
-        const avg3 = yearlyCashValues.length > 0 
-            ? (yearlyCashValues.slice(0, 3).reduce((a, b) => a + b, 0) / Math.min(3, yearlyCashValues.length)).toFixed(2) 
-            : '0.00';
-        const avg5 = yearlyCashValues.length > 0 
-            ? (yearlyCashValues.slice(0, 5).reduce((a, b) => a + b, 0) / Math.min(5, yearlyCashValues.length)).toFixed(2) 
-            : '0.00';
+        const averages = Metrics.calculateDividendAverages(list);
+        const avg3 = averages.avg3.toFixed(2);
+        const avg5 = averages.avg5.toFixed(2);
 
         const latestItem = list[0];
         const latestEx = (latestItem && latestItem.ex_dividend_date && latestItem.ex_dividend_date !== '--') 

@@ -32,15 +32,15 @@
 ## 步驟四：等待部署完成並取得專屬網址
 
 1. 點擊儲存後，GitHub 會在背景自動觸發部屬流程（通常需等待 **1 ~ 2 分鐘**）。
-2. 您可以重新整理（F5）該 Pages 頁面，上方會出現綠色的提示框：
-   * **「Your site is live at https://sue-hsu.github.io/MaybeOmniTrack/」**
-3. 點擊該連結（或在手機瀏覽器開啟），即可直接瀏覽您的金融看板！
+2. 您可以重新整理（F5）該 Pages 頁面，上方會顯示網站已上線。
+3. `MaybeFinance` 是 `MaybeOmniTrack` 的子資料夾，因此金融看板網址為：
+   * **[https://sue-hsu.github.io/MaybeOmniTrack/MaybeFinance/](https://sue-hsu.github.io/MaybeOmniTrack/MaybeFinance/)**
 
 ---
 
 ## ⚠️ 重要提醒：Google 登入網域綁定
 
-啟用 GitHub Pages 後，您的正式線上網址為：
+啟用 GitHub Pages 後，Google OAuth 的 JavaScript 來源仍只填網域（不可包含資料夾路徑）：
 👉 `https://sue-hsu.github.io`
 
 請記得回到 [Google Cloud Console](https://console.cloud.google.com/) 的 **「憑證」➔ 點進您的「OAuth 2.0 用戶端 ID」**：
