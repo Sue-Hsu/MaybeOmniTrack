@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; img-src 'self' data:; connect-src https://lazirtsedusnfibztszi.supabase.co; base-uri 'none'; form-action 'self'">
+    <title>財務看看｜安全登入測試</title>
+    <link rel="stylesheet" href="auth-bootstrap.css">
+    <script src="auth-bootstrap-core.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js" defer></script>
+    <script src="auth-bootstrap.js" defer></script>
+</head>
+<body>
+    <main>
+        <p class="eyebrow">PHASE 0 · AUTH CHECK</p>
+        <h1>安全登入測試</h1>
+        <p class="intro">這個隔離頁面只驗證 Google 身分、家庭 membership 與 30 天應用工作階段，不會讀取或更新股票、股利、匯率與金價。</p>
+
+        <div class="notice">主站仍在安全維護中。即使下方顯示 owner 已核准，也不會從這個頁面開放舊功能。</div>
+
+        <section class="status-card" aria-live="polite" aria-busy="true" id="status-card">
+            <h2 class="status-heading"><span class="status-dot" id="status-dot"></span><span id="status-title">正在檢查登入狀態</span></h2>
+            <dl>
+                <dt>Google 帳號</dt>
+                <dd id="account-value">檢查中</dd>
+                <dt>家庭權限</dt>
+                <dd id="membership-value">檢查中</dd>
+                <dt>應用工作階段</dt>
+                <dd id="session-value">檢查中</dd>
+                <dt>主站狀態</dt>
+                <dd>安全維護中</dd>
+            </dl>
+            <p class="message" id="status-message">正在向 Supabase 驗證目前瀏覽器的登入狀態。</p>
+            <p class="error-detail hidden" id="error-detail"></p>
+        </section>
+
+        <div class="actions">
+            <button type="button" class="primary" id="btn-sign-in">使用 Google 登入</button>
+            <button type="button" class="secondary hidden" id="btn-refresh">重新檢查</button>
+            <button type="button" class="secondary hidden" id="btn-sign-out">登出</button>
+            <a class="button-link secondary" href="maintenance.html">返回維護頁</a>
+        </div>
+    </main>
+</body>
+</html>

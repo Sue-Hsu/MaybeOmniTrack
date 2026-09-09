@@ -1,10 +1,25 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <meta http-equiv="refresh" content="0; url=maintenance.html">
-    <script>window.location.replace('./maintenance.html');</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="auth-bootstrap-core.js"></script>
+    <script>
+        (function routeMaintenanceOrAuthReturn() {
+            const target = './auth-bootstrap.html';
+            if (window.AuthBootstrapCore
+                && window.AuthBootstrapCore.isAuthReturn(window.location.search, window.location.hash)) {
+                window.location.replace(window.AuthBootstrapCore.buildAuthTestReturnUrl(
+                    target,
+                    window.location.search,
+                    window.location.hash
+                ));
+                return;
+            }
+            window.location.replace('./maintenance.html');
+        }());
+    </script>
+    <noscript><meta http-equiv="refresh" content="0; url=maintenance.html"></noscript>
     <title>財務看看 - 匯率・金價・AI 存股健檢</title>
     <!-- Favicon & Touch Icon -->
     <link rel="icon" type="image/png" sizes="32x32" href="icon/stupid-black-32.png">
