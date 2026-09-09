@@ -161,13 +161,22 @@
     async function signOut() {
         setBusy(true);
         setError(null);
-        const { error } = await client.auth.signOut();
+
+        const revokeResult = await client.rpc('revoke_current_member_session');
+        const revokeError = revokeResult.error || (revokeResult.data !== true
+            ? new Error('應用工作階段可能已失效或未能撤銷。')
+            : null);
+
+        const { error } = await client.auth.signOut({ scope: 'local' });
         if (error) {
             setBusy(false);
             setError(error);
             return;
         }
         await refreshAccess();
+        if (revokeError) {
+            setError(new Error(`已從此瀏覽器登出，但${revokeError.message}`));
+        }
     }
 
     function start() {
